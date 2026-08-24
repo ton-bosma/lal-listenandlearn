@@ -186,6 +186,12 @@ Optionele natuurlijke stem via Google Cloud TTS, náást de gratis browser-stem.
 
 ## TODO / nice-to-have (geparkeerd)
 
+- **Taal als instelling (generiek maken).** De app is qua mechaniek taal-onafhankelijk, maar
+  nu hard op Spaans→Nederlands: `Intl.Segmenter('es')` (sentences.ts), `source:'es'/target:'nl'`
+  (translate.ts), de Spaanse stemfilters (tts.ts/cloudtts.ts) en de NL-prompt (explain.ts).
+  Doel: bron-/doeltaal als instelling, zodat andere talencombinaties werken. Repo heet daarom
+  bewust generiek **lal-listenandlearn** (Listen And Learn).
+
 Bewust uitgesteld — de app is nu bruikbaar voor "schools" leren via de boek-flow; deze ideeën
 komen later, in ongeveer deze volgorde van waarschijnlijkheid:
 

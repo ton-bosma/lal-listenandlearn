@@ -1,9 +1,12 @@
-# Spaans leren per zin
+# LAL — Listen And Learn
 
-Een persoonlijke app om Spaans te leren door een boek (of later video) **zin voor zin**
-te doorlopen, met progressieve hulp die je zelf inroept: eerst luisteren, dan de Spaanse
-tekst, dan woord-hovers, dan de hele NL-zin, en (later) een LLM-uitleg van een geselecteerd
-tekstdeel.
+Een generieke taal-leer-app: een boek (of later video) **zin voor zin** doorlopen met
+progressieve hulp die je zelf inroept: eerst luisteren, dan de tekst, dan woord-hovers, dan
+de hele vertaling, en een LLM-uitleg van een geselecteerd tekstdeel.
+
+De mechaniek is taal-onafhankelijk; **op dit moment ingericht voor Spaans → Nederlands**
+(zin-splitsing `es`, vertaling es→nl, Spaanse stem). "Taal als instelling" staat als
+TODO in [docs/STATUS.md](docs/STATUS.md).
 
 > Volledige functionele beschrijving: **[docs/SPEC.md](docs/SPEC.md)**
 > Wat is af / wat volgt: **[docs/STATUS.md](docs/STATUS.md)**
