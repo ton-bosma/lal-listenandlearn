@@ -1,0 +1,23 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Build-artefacten (output van tsc -b)
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+.env
+.env.*
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# Secrets — nooit committen
+apikey.txt
+*.key
+
+# Persoonlijke bronbestanden (auteursrecht) — nooit committen
+books/
+*.pdf
+*.epub
