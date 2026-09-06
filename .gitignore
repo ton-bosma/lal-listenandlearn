@@ -21,3 +21,9 @@ apikey.txt
 books/
 *.pdf
 *.epub
+
+# Lokale server-cache (dev); op de NAS zit dit op een gemount volume
+cache/
+
+# Crash-artefacten (Git Bash op Windows)
+*.stackdump

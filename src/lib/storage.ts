@@ -5,23 +5,70 @@
 
 const PROGRESS_KEY = 'spaanleren.progress.v1'
 const BOOK_KEY = 'spaanleren.book.v1'
+const AI_TRANSLATE_KEY = 'spaanleren.aiTranslateEnabled.v1'
+const MUTED_KEY = 'spaanleren.muted.v1'
+const SEGMENT_MODE_KEY = 'spaanleren.segmentMode.v1'
 
 interface Progress {
-  /** Index van de huidige zin in het boek. */
+  /** Index van de huidige zin (deterministische modus). */
   index: number
+  /** Cursor voor de AI-modus: welke chunk + welke eenheid daarin. */
+  chunk?: number
+  unit?: number
 }
 
-/** Een hoofdstuk: titel + de zin-index waar het begint. */
+/**
+ * Hoe een boek geknipt is:
+ *  - 'deterministic' -> in één keer bij import via Intl.Segmenter (klassiek, default).
+ *  - 'ai'            -> voortschrijdend per chunk door de AI-knipper (opschonen + knippen).
+ */
+export type SegmentMode = 'deterministic' | 'ai'
+
+/** Een hoofdstuk. `start` = zin-index (deterministisch, of lazy in AI-modus);
+ *  `startChunk` = chunk-index waar het hoofdstuk begint (AI-modus, bekend bij import). */
 export interface Chapter {
   title: string
-  start: number
+  start?: number
+  startChunk?: number
 }
 
-/** Het ingeladen boek (Fase 4). Meerdere boeken = later; nu één "current". */
+/** Een door de AI ontdekte sectie (AI-modus): titel + waar hij begint (chunk + eenheid-index).
+ *  `generated` = titel door AI verzonnen (bijv. "Voorwoord") i.p.v. uit de tekst gehaald.
+ *  Wordt progressief opgebouwd tijdens het lezen en op het boek gecachet. */
+export interface Section {
+  title: string
+  chunk: number
+  unit: number
+  generated: boolean
+}
+
+/** Voeg een sectie toe/vervang die van dezelfde chunk, en houd de lijst gesorteerd. */
+export function addSection(book: Book, section: Section): Book {
+  const rest = (book.sections ?? []).filter((s) => s.chunk !== section.chunk)
+  const sections = [...rest, section].sort((a, b) => a.chunk - b.chunk || a.unit - b.unit)
+  return { ...book, sections }
+}
+
+/** Het ingeladen boek. Beide knip-modi passen in dit model (zie `mode`). */
 export interface Book {
   name: string
-  sentences: string[]
+  /** Knip-modus. Ontbreekt = legacy boek = deterministisch. */
+  mode?: SegmentMode
   chapters?: Chapter[]
+  // Deterministische modus (en legacy):
+  sentences?: string[]
+  // AI-modus (voortschrijdend geknipt):
+  /** Ruwe tekst per chunk (deterministisch gehakt bij import). */
+  rawChunks?: string[]
+  /** Per chunk de geknipte leer-eenheden; null = nog niet verwerkt (sparse cache). */
+  units?: (string[] | null)[]
+  /** Ruwe tekstlengte van het hele boek, voor de voortgangsraming. */
+  rawLength?: number
+  /** Chunk-index waar het verhaal begint (front-matter ervoor overslaan). Eénmalig door de AI
+   *  bepaald over de opening en hier gecachet; undefined = nog niet bepaald. */
+  storyStart?: number
+  /** Progressief door de AI ontdekte secties (voor de hoofdstuk-dropdown), gecachet. */
+  sections?: Section[]
 }
 
 export function loadBook(): Book | null {
@@ -29,14 +76,54 @@ export function loadBook(): Book | null {
     const raw = localStorage.getItem(BOOK_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<Book>
-    if (typeof parsed.name === 'string' && Array.isArray(parsed.sentences)) {
-      const chapters = Array.isArray(parsed.chapters)
-        ? parsed.chapters.filter(
-            (c): c is Chapter => !!c && typeof c.title === 'string' && typeof c.start === 'number',
-          )
+    if (typeof parsed.name !== 'string') return null
+
+    const chapters = Array.isArray(parsed.chapters)
+      ? parsed.chapters.filter(
+          (c): c is Chapter =>
+            !!c &&
+            typeof c.title === 'string' &&
+            (typeof c.start === 'number' || typeof c.startChunk === 'number'),
+        )
+      : undefined
+
+    // AI-modus: ruwe chunks + sparse eenheden-cache.
+    if (parsed.mode === 'ai' && Array.isArray(parsed.rawChunks)) {
+      const rawChunks = parsed.rawChunks.filter((s): s is string => typeof s === 'string')
+      const units = Array.isArray(parsed.units)
+        ? rawChunks.map((_, i) => {
+            const u = parsed.units![i]
+            return Array.isArray(u) ? u.filter((s) => typeof s === 'string') : null
+          })
+        : rawChunks.map(() => null)
+      const sections = Array.isArray(parsed.sections)
+        ? parsed.sections
+            .filter(
+              (s) =>
+                !!s &&
+                typeof s.title === 'string' &&
+                typeof s.chunk === 'number' &&
+                typeof s.unit === 'number',
+            )
+            .map((s) => ({ title: s.title!, chunk: s.chunk!, unit: s.unit!, generated: !!s.generated }))
         : undefined
       return {
         name: parsed.name,
+        mode: 'ai',
+        rawChunks,
+        units,
+        rawLength: typeof parsed.rawLength === 'number' ? parsed.rawLength : undefined,
+        storyStart: typeof parsed.storyStart === 'number' ? parsed.storyStart : undefined,
+        sections,
+        chapters,
+      }
+    }
+
+    // Deterministische modus (en legacy boeken zonder `mode`).
+    if (Array.isArray(parsed.sentences)) {
+      return {
+        name: parsed.name,
+        mode: 'deterministic',
         sentences: parsed.sentences.filter((s) => typeof s === 'string'),
         chapters,
       }
@@ -61,7 +148,9 @@ export function loadProgress(): Progress {
     if (!raw) return { index: 0 }
     const parsed = JSON.parse(raw) as Partial<Progress>
     const index = typeof parsed.index === 'number' && parsed.index >= 0 ? parsed.index : 0
-    return { index }
+    const chunk = typeof parsed.chunk === 'number' && parsed.chunk >= 0 ? parsed.chunk : undefined
+    const unit = typeof parsed.unit === 'number' && parsed.unit >= 0 ? parsed.unit : undefined
+    return { index, chunk, unit }
   } catch {
     return { index: 0 }
   }
@@ -72,5 +161,72 @@ export function saveProgress(progress: Progress): void {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress))
   } catch {
     // localStorage kan geblokkeerd zijn (privémodus e.d.) — dan simpelweg niet bewaren.
+  }
+}
+
+/**
+ * Setting voor de AI-vertaling (Gemini-met-context) op niveau 'dutch':
+ *  - 'off'    -> nooit; alleen Google Translate.
+ *  - 'second' -> als 2e keus; Google eerst, klik op de NL-zin voor de AI-versie.
+ *  - 'first'  -> meteen; direct de AI-versie, Google wordt overgeslagen.
+ * Default 'off'.
+ */
+export type AiTranslateMode = 'off' | 'second' | 'first'
+
+export function getAiTranslateMode(): AiTranslateMode {
+  try {
+    const v = localStorage.getItem(AI_TRANSLATE_KEY)
+    if (v === 'off' || v === 'second' || v === 'first') return v
+    if (v === '1') return 'second' // migratie van de oude aan/uit-setting
+    return 'off'
+  } catch {
+    return 'off'
+  }
+}
+
+export function setAiTranslateMode(mode: AiTranslateMode): void {
+  try {
+    localStorage.setItem(AI_TRANSLATE_KEY, mode)
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Setting: hoe nieuw geïmporteerde boeken geknipt worden.
+ *  - 'deterministic' -> klassiek, in één keer bij import (default, geen AI-calls).
+ *  - 'ai'            -> voortschrijdend per chunk door de AI-knipper.
+ * De modus wordt bij import in het boek gebakken; wisselen geldt pas bij (her)import.
+ */
+export function getSegmentMode(): SegmentMode {
+  try {
+    return localStorage.getItem(SEGMENT_MODE_KEY) === 'ai' ? 'ai' : 'deterministic'
+  } catch {
+    return 'deterministic'
+  }
+}
+
+export function setSegmentMode(mode: SegmentMode): void {
+  try {
+    localStorage.setItem(SEGMENT_MODE_KEY, mode)
+  } catch {
+    // best-effort
+  }
+}
+
+/** Setting: mute (alle spraak uit — automatisch én handmatig). Default uit. */
+export function loadMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function saveMuted(on: boolean): void {
+  try {
+    localStorage.setItem(MUTED_KEY, on ? '1' : '0')
+  } catch {
+    // best-effort
   }
 }

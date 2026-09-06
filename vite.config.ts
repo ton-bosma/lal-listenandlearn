@@ -5,24 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Proxy naar Google Translate om CORS in dev te omzeilen.
-    // De client roept "/gtranslate/..." aan; hier wordt dat doorgezet naar Google.
-    // (In een gepubliceerde app bestaat deze dev-proxy niet -> zie docs/SPEC.md §6.)
+    // De client praat uitsluitend met de eigen backend via /api/*. In dev draait die lokaal
+    // op :3001 (npm run dev start Vite + backend samen). De keys zitten server-side; er wordt
+    // niet meer rechtstreeks vanuit de browser naar Google gebeld. Zie docs/DEPLOY.md.
     proxy: {
-      '/gtranslate': {
-        target: 'https://translation.googleapis.com',
+      '/api': {
+        target: 'http://localhost:3001',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/gtranslate/, ''),
-      },
-      '/gemini': {
-        target: 'https://generativelanguage.googleapis.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/gemini/, ''),
-      },
-      '/gtts': {
-        target: 'https://texttospeech.googleapis.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/gtts/, ''),
       },
     },
   },

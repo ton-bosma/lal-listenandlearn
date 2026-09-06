@@ -208,11 +208,41 @@ komen later, in ongeveer deze volgorde van waarschijnlijkheid:
   (Spaanse zin + fragment + vorige uitleg). **Strak gebonden aan het fragment**: de mini-draad
   hoort bij déze zin en wist bij het navigeren naar de volgende zin. Evt. zachte limiet op
   aantal vervolgvragen. Doel: verhelderen, geen losse chat-app.
+- **Uitspraak-check (twee-traps).** Je spreekt een woord/zin, de app zegt of het klopt.
+  (1) **Gratis, mild — Duolingo-stijl:** browser `SpeechRecognition` (lang `es`) → transcriptie
+  fuzzy vergelijken met de doelzin → ✓/✗. Laag bouwwerk, geen extra key (Chrome, mic-permissie,
+  internet). Bewust vergevingsgezind = motiverend, geen echte uitspraak-score.
+  (2) **Upgrade — echte scores:** Azure Speech **Pronunciation Assessment** (per woord/foneem;
+  gratis laag ~5 audio-uur/mnd; aparte key; doorbreekt "alles via Google" want Google heeft
+  hier geen goede kant-en-klare dienst voor).
+- **Vocabulaire vooraf (front-loading), aanzetbare optie.** De app kijkt X woorden / N zinnen
+  vooruit en biedt de **lastige woorden** eerst aan — als vertaallijst óf als **matching-spel**
+  (twee rijen Spaans↔betekenis, paren vormen, Duolingo-stijl). "Lastig" bepalen via een Spaanse
+  frequentielijst, Gemini ("welke woorden zijn hier lastig voor een leerder?"), of je
+  nog-niet-geziene/gemarkeerde woorden. Deelt bouwstenen met de overhoor-oefenmodus (matching)
+  en de bestaande hovers/vertaling. Toggle in de instellingen.
 - **Woorden markeren + overhoren (oefenmodus).** Tik/selecteer een woord → "★ Onthouden" →
   persoonlijke woordenlijst met NL-betekenis + bronzin als context. Aparte **Oefenen**-modus
   die de gemarkeerde woorden overhoort (flashcards Spaans↔NL) met **spaced repetition**
   (goed = later terug, fout = snel terug). Leunt op bestaande hovers/vertaling; Gemini kan
   er optioneel een voorbeeldzin/uitleg bij geven. Opslag lokaal (localStorage).
+### Sneller-lezen-features (ideeën van Claude, afgekeken van andere apps)
+
+- **★ Karaoke-highlight tijdens voorlezen** *(top-2)*. Woord licht op terwijl de stem leest →
+  ogen volgen spraaktempo, snellere woordherkenning. Web Speech `onboundary` per woord
+  (browserstem; bij Cloud-audio lastiger). Grootste directe versneller voor leestempo.
+- **★ Bekende/onbekende woorden kleuren + dekkingspercentage** *(top-2, LingQ-kern)*. Houd een
+  known-words set bij; onbekende gemarkeerd, bekende "gewoon". "Je kent X% van dit boek"-meter
+  helpt materiaal op niveau kiezen (i+1). Voedt de overhoor-SRS.
+- **Flow-/extensief-modus**: auto-doorlezen + voorlezen zonder aansporing tot opzoeken; volume
+  boven precisie, voor leesritme. Tegenhanger van de intensieve study-modus.
+- **Leesstatistieken + streak** (woorden gelezen / nieuwe woorden / dagen op rij). Volume drijft
+  leessnelheid; goedkoop te bouwen.
+- **Steun-niveau / hulp afbouwen** (globaal): tekst+audio → alleen audio → snelheid richting
+  native. Bouwt voort op de bestaande progressieve hulp per zin.
+- **Chunk/collocatie-herkenning**: veelvoorkomende woordgroepen (bijv. vaste uitdrukkingen)
+  markeren/opslaan; vloeiende lezers lezen in brokken. Leent op de selectie-voor-uitleg.
+
 - **Video-flow** (grootste, veel later). Doel: leren echte sprekers te verstaan, niet alleen
   nette TTS. Realistisch beperkt tot **YouTube** (Netflix afgeschermd); transcript+timing via
   YouTube-captions of **Whisper** (lokaal, gratis, met tijdstempels); zelfde hulplagen als bij

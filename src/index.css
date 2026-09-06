@@ -68,6 +68,73 @@ body {
   white-space: nowrap;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-btn {
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.icon-btn:hover {
+  border-color: var(--accent);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-top: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.panel-field select {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  max-width: 280px;
+}
+
+.panel-field input[type='range'] {
+  margin-left: auto;
+  accent-color: var(--accent);
+}
+
 .bookbar {
   display: flex;
   align-items: center;
@@ -121,6 +188,32 @@ body {
   margin: 0;
 }
 
+.loading-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .spanish {
   font-size: 1.7rem;
   margin: 0;
@@ -136,11 +229,215 @@ body {
   max-width: 90%;
 }
 
+.dutch-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 90%;
+}
+
+.dutch-block .dutch {
+  max-width: 100%;
+}
+
+.dutch.clickable {
+  cursor: pointer;
+}
+
+.dutch.clickable:hover {
+  color: var(--text);
+}
+
+.ai-badge {
+  margin-left: 8px;
+  font-size: 0.7rem;
+  color: var(--accent);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.ai-translate-btn {
+  align-self: center;
+  white-space: normal;
+}
+
+.dutch.ai-failed {
+  color: var(--warn, #c0392b);
+  font-size: 0.95rem;
+}
+
+.mute-notice {
+  margin: 0 auto;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85rem;
+  animation: mute-fade 0.2s ease-out;
+}
+
+@keyframes mute-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Woordenlijst-knop (topbalk) */
+.vocab-btn {
+  position: relative;
+}
+
+.vocab-count {
+  margin-left: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Woordenlijst-zijpaneel (schuift van rechts eróver; leesvenster verspringt niet) */
+.vocab-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 20;
+}
+
+.vocab-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(360px, 85vw);
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  animation: vocab-slide 0.16s ease-out;
+}
+
+@keyframes vocab-slide {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.vocab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.vocab-empty {
+  padding: 16px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.vocab-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+}
+
+.vocab-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.vocab-word {
+  font-weight: 600;
+  cursor: text;
+  border-bottom: 1px dotted transparent;
+}
+
+.vocab-word:hover {
+  border-bottom-color: var(--border);
+}
+
+.vocab-word-edit {
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.vocab-tr {
+  color: var(--muted);
+  cursor: text;
+  border-bottom: 1px dotted transparent;
+}
+
+.vocab-tr:hover {
+  border-bottom-color: var(--border);
+}
+
+.vocab-tr-edit {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.vocab-del {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.vocab-del:hover {
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+}
+
 /* Selecteer + uitleg (Fase 3) */
 .hint-select {
   color: var(--muted);
   font-size: 0.82rem;
   margin: 0;
+}
+
+.selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 90%;
 }
 
 .explain-btn {
@@ -180,12 +477,122 @@ body {
   word-break: break-word;
 }
 
+.explain-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Gerenderde Markdown van de AI (koppen/lijsten/vet/code) — compact houden. */
+.explain-md {
+  white-space: normal;
+}
+
+.explain-md p {
+  margin: 0.4em 0;
+}
+
+.explain-md h2,
+.explain-md h3,
+.explain-md h4,
+.explain-md h5,
+.explain-md h6 {
+  margin: 0.6em 0 0.3em;
+  line-height: 1.2;
+}
+
+.explain-md h2 { font-size: 1.1rem; }
+.explain-md h3 { font-size: 1.02rem; }
+.explain-md h4,
+.explain-md h5,
+.explain-md h6 { font-size: 0.98rem; }
+
+.explain-md ul,
+.explain-md ol {
+  margin: 0.35em 0;
+  padding-left: 1.3em;
+}
+
+.explain-md li {
+  margin: 0.15em 0;
+}
+
+.explain-md code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.9em;
+}
+
+.explain-md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.6em 0;
+}
+
+.explain-md :first-child { margin-top: 0; }
+.explain-md :last-child { margin-bottom: 0; }
+
+/* Jouw vervolgvraag in de thread */
+.explain-q {
+  margin: 0;
+  align-self: flex-end;
+  max-width: 85%;
+  background: var(--accent);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 10px 10px 2px 10px;
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+
+.explain-typing {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+.explain-ask {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.explain-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
 /* Woord met hover-tooltip */
 .word {
   position: relative;
-  cursor: help;
+  cursor: pointer;
   border-bottom: 1px dotted transparent;
-  transition: border-color 0.12s, color 0.12s;
+  transition: border-color 0.12s, color 0.12s, background-color 0.12s;
+}
+
+/* Gemarkeerd (onbekend) woord: subtiele markering, overal in de tekst. */
+.word.marked {
+  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+  border-radius: 3px;
+  border-bottom-color: var(--accent-2);
+}
+
+/* Hint onderin de hover: wat een klik doet. */
+.tooltip-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.68rem;
+  opacity: 0.7;
 }
 
 .word:hover {
