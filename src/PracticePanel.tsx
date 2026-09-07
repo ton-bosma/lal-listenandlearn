@@ -51,9 +51,15 @@ export default function PracticePanel({
   // Effectieve richting: alleen de woord-flashcard kent NL→ES; de AI-zin blijft altijd ES→NL.
   const dir: PracticeDir = mode === 'flashcard' ? flashDir : 'es2nl'
   const flashTitle =
-    dir === 'nl2es'
-      ? '🃏 Woord-flashcard — Nederlands → Spaans'
-      : '🃏 Woord-flashcard — Spaans → Nederlands'
+    dir === 'nl2es' ? (
+      <>
+        <span className="material-icons">style</span> Woord-flashcard — Nederlands → Spaans
+      </>
+    ) : (
+      <>
+        <span className="material-icons">style</span> Woord-flashcard — Spaans → Nederlands
+      </>
+    )
 
   // SRS-stand (lokaal). We houden 'm in state zodat de UI meebeweegt, en persisteren via grade().
   const [srs, setSrs] = useState<SrsState>(() => loadSrs())
@@ -224,9 +230,17 @@ export default function PracticePanel({
       <div className="practice">
         <div className="practice-head">
           <button className="btn practice-back" onClick={onBack}>
-            ← Terug
+            <span className="material-icons">arrow_back</span> Terug
           </button>
-          <span className="practice-title">{isAi ? '✨ AI-voorbeeldzin' : flashTitle}</span>
+          <span className="practice-title">
+            {isAi ? (
+              <>
+                <span className="material-icons">auto_awesome</span> AI-voorbeeldzin
+              </>
+            ) : (
+              flashTitle
+            )}
+          </span>
         </div>
         <p className="practice-empty">
           Nog geen woorden om te oefenen. Markeer eerst wat woorden in de tekst.
@@ -241,13 +255,14 @@ export default function PracticePanel({
       <div className="practice">
         <div className="practice-head">
           <button className="btn practice-back" onClick={onBack}>
-            ← Terug
+            <span className="material-icons">arrow_back</span> Terug
           </button>
           <span className="practice-title">Ronde klaar</span>
         </div>
         <div className="practice-summary">
           <p className="practice-summary-line">
-            🎉 Klaar! {total} {total === 1 ? 'kaart' : 'kaarten'} afgerond.
+            <span className="material-icons">celebration</span> Klaar! {total}{' '}
+            {total === 1 ? 'kaart' : 'kaarten'} afgerond.
           </p>
           <p className="practice-summary-sub">
             {wrong === 0 ? 'Alles in één keer goed.' : `${wrong}× fout onderweg.`}
@@ -273,9 +288,17 @@ export default function PracticePanel({
     <div className="practice">
       <div className="practice-head">
         <button className="btn practice-back" onClick={onBack}>
-          ← Terug
+          <span className="material-icons">arrow_back</span> Terug
         </button>
-        <span className="practice-title">{isAi ? '✨ AI-voorbeeldzin' : flashTitle}</span>
+        <span className="practice-title">
+          {isAi ? (
+            <>
+              <span className="material-icons">auto_awesome</span> AI-voorbeeldzin
+            </>
+          ) : (
+            flashTitle
+          )}
+        </span>
         <span className="practice-progress">
           {Math.min(done + 1, total)} / {total}
         </span>
@@ -291,7 +314,11 @@ export default function PracticePanel({
                     <span className="spinner" aria-hidden="true" /> Zin maken…
                   </span>
                 )}
-                {aiError && <span className="practice-card-error">⚠️ Zin ophalen mislukt.</span>}
+                {aiError && (
+                  <span className="practice-card-error">
+                    <span className="material-icons">warning</span> Zin ophalen mislukt.
+                  </span>
+                )}
                 {!aiLoading && !aiError && aiSentence && (
                   <span className="practice-front" lang="es">
                     {tokenize(aiSentence.sentence).map((t, i) =>
@@ -375,10 +402,10 @@ export default function PracticePanel({
       {flipped ? (
         <div className="practice-grade">
           <button className="btn practice-wrong" onClick={() => handleGrade(false)}>
-            ✗ Fout
+            <span className="material-icons">close</span> Fout
           </button>
           <button className="btn practice-right" onClick={() => handleGrade(true)}>
-            ✓ Goed
+            <span className="material-icons">check</span> Goed
           </button>
         </div>
       ) : (
@@ -388,7 +415,7 @@ export default function PracticePanel({
             onClick={() => setFlipped(true)}
             disabled={!canReveal}
           >
-            👁 Toon vertaling
+<span className="material-icons">visibility</span> Toon vertaling
           </button>
           <p className="practice-tip">
             {isAi

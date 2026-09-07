@@ -7,6 +7,7 @@ const PROGRESS_KEY = 'spaanleren.progress.v1'
 const BOOK_KEY = 'spaanleren.book.v1'
 const AI_TRANSLATE_KEY = 'spaanleren.aiTranslateEnabled.v1'
 const MUTED_KEY = 'spaanleren.muted.v1'
+const MIC_MUTED_KEY = 'spaanleren.micMuted.v1'
 const SEGMENT_MODE_KEY = 'spaanleren.segmentMode.v1'
 
 interface Progress {
@@ -214,8 +215,12 @@ export function setSegmentMode(mode: SegmentMode): void {
   }
 }
 
-/** Setting: mute (alle spraak uit — automatisch én handmatig). Default uit. */
-export function loadMuted(): boolean {
+/**
+ * Setting: geluid ontvangen (voorlezen/TTS) uit — automatisch én handmatig voorlezen.
+ * Hergebruikt de bestaande mute-sleutel zodat de huidige stand behouden blijft. Default uit
+ * (= geluid aan).
+ */
+export function loadAudioMuted(): boolean {
   try {
     return localStorage.getItem(MUTED_KEY) === '1'
   } catch {
@@ -223,9 +228,30 @@ export function loadMuted(): boolean {
   }
 }
 
-export function saveMuted(on: boolean): void {
+export function saveAudioMuted(on: boolean): void {
   try {
     localStorage.setItem(MUTED_KEY, on ? '1' : '0')
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Setting: geluid produceren (microfoon/spraak-invoer) uit. Nieuw, eigen sleutel; heeft nog
+ * geen consument (er is nog geen spraak-invoer) maar wordt vast bewaard voor komende
+ * spraak-oefeningen. Default uit (= mic aan).
+ */
+export function loadMicMuted(): boolean {
+  try {
+    return localStorage.getItem(MIC_MUTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function saveMicMuted(on: boolean): void {
+  try {
+    localStorage.setItem(MIC_MUTED_KEY, on ? '1' : '0')
   } catch {
     // best-effort
   }

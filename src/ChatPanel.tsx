@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { type ChatMsg, chatSend } from './lib/explain'
 import { mdToHtml } from './lib/markdown'
 
 interface ChatPanelProps {
-  title: string
+  title: ReactNode
   seed: ChatMsg[]
   context?: { fragment: string; sentence: string }
   onBack: () => void
@@ -45,7 +45,7 @@ export default function ChatPanel({ title, seed, context, onBack }: ChatPanelPro
     <>
       <div className="screen-head">
         <button className="btn practice-back" onClick={onBack}>
-          ← Terug
+          <span className="material-icons">arrow_back</span> Terug
         </button>
         <h2 className="screen-title">{title}</h2>
       </div>

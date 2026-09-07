@@ -38,6 +38,13 @@ body {
   line-height: 1.5;
 }
 
+/* Material Icons: netjes uitlijnen met omringende tekst en knoppen. */
+.material-icons {
+  font-size: 1.2em;
+  line-height: 1;
+  vertical-align: middle;
+}
+
 .app {
   max-width: 760px;
   margin: 0 auto;
@@ -89,6 +96,10 @@ body {
 
 .icon-btn:hover {
   border-color: var(--accent);
+}
+
+.icon-btn .material-icons {
+  font-size: 1.3rem;
 }
 
 .panel {
@@ -267,26 +278,41 @@ body {
   font-size: 0.95rem;
 }
 
-.mute-notice {
-  margin: 0 auto;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 0.85rem;
-  animation: mute-fade 0.2s ease-out;
+/* Geluidstoggles in het instellingen-paneel (Voorlezen / Microfoon). */
+.panel-toggle-row {
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
-@keyframes mute-fade {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.sound-toggle {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.sound-toggle[aria-pressed='false'] {
+  color: var(--muted);
+}
+
+.sound-toggle .material-icons {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.toggle-hint {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  opacity: 0.75;
 }
 
 /* Woordenlijst-knop (topbalk) */
@@ -982,6 +1008,10 @@ body {
 .practice-choice-title {
   font-weight: 600;
   font-size: 0.98rem;
+}
+
+.practice-choice-title .material-icons {
+  font-size: 1.3em;
 }
 
 .practice-choice-desc {

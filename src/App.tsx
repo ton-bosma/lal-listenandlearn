@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { demoSentences } from './data/demoText'
 import { cleanWord, normalizeWord, tokenize } from './lib/words'
 import {
@@ -19,10 +19,12 @@ import {
   type SegmentMode,
   getAiTranslateMode,
   getSegmentMode,
+  loadAudioMuted,
   loadBook,
-  loadMuted,
+  loadMicMuted,
+  saveAudioMuted,
   saveBook,
-  saveMuted,
+  saveMicMuted,
   setAiTranslateMode,
   setSegmentMode,
 } from './lib/storage'
@@ -91,14 +93,19 @@ export default function App() {
   const reader = useReader(book, setBook, demoSentences)
   const { sentence, pos, chapters, currentChapter } = reader
 
-  const [reveal, setReveal] = useState<Reveal>('none')
+  // Geluid ontvangen (voorlezen/TTS) uit? Gate't het auto-voorlezen én handmatig "Luister".
+  const [audioMuted, setAudioMuted] = useState(() => loadAudioMuted())
+  // Geluid produceren (microfoon/spraak-invoer) uit? Nog geen consument; bewaard voor
+  // komende spraak-oefeningen.
+  const [micMuted, setMicMuted] = useState(() => loadMicMuted())
+
+  // Stille leesmodus: zonder geluid is de audio-only startstap ('none') een doodlopend pad,
+  // dus begint elke zin dan meteen zichtbaar ('spanish').
+  const freshReveal = (): Reveal => (audioMuted ? 'spanish' : 'none')
+
+  const [reveal, setReveal] = useState<Reveal>(() => (loadAudioMuted() ? 'spanish' : 'none'))
   const [rate, setRate] = useState(0.9)
   const firstMount = useRef(true)
-
-  // Mute: alle spraak uit (auto én handmatig), met een kort zichtbare melding.
-  const [muted, setMuted] = useState(() => loadMuted())
-  const [muteNotice, setMuteNotice] = useState(false)
-  const muteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Knip-modus voor nieuw te importeren boeken (deterministisch of AI-knipper).
   const [segMode, setSegMode] = useState<SegmentMode>(() => getSegmentMode())
@@ -200,7 +207,7 @@ export default function App() {
   // en waar "← Terug" naartoe gaat. Vers per keer (geen persistentie).
   const [chatSeed, setChatSeed] = useState<ChatMsg[]>([])
   const [chatContext, setChatContext] = useState<{ fragment: string; sentence: string } | null>(null)
-  const [chatTitle, setChatTitle] = useState('')
+  const [chatTitle, setChatTitle] = useState<ReactNode>('')
   const [chatReturnTo, setChatReturnTo] = useState<Screen>('menu')
 
   // Huidige positie bij de hand voor async callbacks (voorkomt dat een laat resultaat op de
@@ -230,42 +237,34 @@ export default function App() {
       firstMount.current = false
       return
     }
-    if (muted) return // mute: geen automatische spraak
+    if (audioMuted) return // geluid uit: geen automatische spraak
     speak(sentence, rate)
-    // rate/muted bewust niet in deps: snelheid of mute wijzigen leest niet vanzelf opnieuw voor.
+    // rate/audioMuted bewust niet in deps: snelheid of geluid wijzigen leest niet vanzelf
+    // opnieuw voor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos])
 
-  // Kort de "geluid staat uit"-melding tonen (bij een luister-actie terwijl mute aanstaat).
-  function flashMuteNotice() {
-    setMuteNotice(true)
-    if (muteTimer.current) clearTimeout(muteTimer.current)
-    muteTimer.current = setTimeout(() => setMuteNotice(false), 2500)
-  }
-  useEffect(() => {
-    return () => {
-      if (muteTimer.current) clearTimeout(muteTimer.current)
-    }
-  }, [])
-
-  function toggleMute() {
-    const next = !muted
-    setMuted(next)
-    saveMuted(next)
-    if (next) {
+  // Voorlezen (geluid ontvangen) aan/uit. Bij uitzetten: lopende spraak stoppen en, als we nog
+  // op de audio-only startstap staan, meteen door naar de zichtbare zin (stille leesmodus).
+  function setAudioOn(on: boolean) {
+    const nextMuted = !on
+    setAudioMuted(nextMuted)
+    saveAudioMuted(nextMuted)
+    if (nextMuted) {
       stopSpeaking()
-      flashMuteNotice()
-    } else {
-      setMuteNotice(false)
+      setReveal((r) => (r === 'none' ? 'spanish' : r))
     }
   }
 
-  // Handmatig voorlezen ("Luister"); bij mute geen geluid maar wel de melding.
+  // Microfoon (geluid produceren) aan/uit. Nog geen consument; alleen bewaren.
+  function setMicOn(on: boolean) {
+    setMicMuted(!on)
+    saveMicMuted(!on)
+  }
+
+  // Handmatig voorlezen ("Luister"). Bij geluid uit is de knop verborgen; guard voor de zekerheid.
   function handleListen() {
-    if (muted) {
-      flashMuteNotice()
-      return
-    }
+    if (audioMuted) return
     speak(sentence, rate)
   }
 
@@ -334,17 +333,17 @@ export default function App() {
   // weer kaal). De reader leest de nieuwe zin vanzelf voor bij de positiewissel (auto-speak).
   function navPrev() {
     stopSpeaking()
-    setReveal('none')
+    setReveal(freshReveal())
     reader.goPrev()
   }
   function navNext() {
     stopSpeaking()
-    setReveal('none')
+    setReveal(freshReveal())
     reader.goNext()
   }
   function navChapter(i: number) {
     stopSpeaking()
-    setReveal('none')
+    setReveal(freshReveal())
     reader.jumpToChapter(i)
   }
 
@@ -380,7 +379,7 @@ export default function App() {
         saveBook(newBook)
         stopSpeaking()
         setBook(newBook) // reader (her)initialiseert + laadt de eerste chunk
-        setReveal('none')
+        setReveal(freshReveal())
         return
       }
 
@@ -413,7 +412,7 @@ export default function App() {
       saveBook(newBook)
       stopSpeaking()
       setBook(newBook)
-      setReveal('none')
+      setReveal(freshReveal())
     } catch (err) {
       setBookError(errMessage(err))
     } finally {
@@ -464,7 +463,11 @@ export default function App() {
   function openFreeChat() {
     setChatSeed([])
     setChatContext(null)
-    setChatTitle('💬 Chat — Spaans leren')
+    setChatTitle(
+      <>
+        <span className="material-icons">chat</span> Chat — Spaans leren
+      </>,
+    )
     setChatReturnTo('menu')
     setScreen('chat')
   }
@@ -593,7 +596,12 @@ export default function App() {
             {reader.progress.approx
               ? `Zin ~${reader.progress.current} / ~${reader.progress.total}`
               : `Zin ${reader.progress.current} / ${reader.progress.total}`}
-            {reader.loading && ' ⏳'}
+            {reader.loading && (
+              <>
+                {' '}
+                <span className="material-icons">hourglass_empty</span>
+              </>
+            )}
           </span>
           <button
             className="icon-btn vocab-btn"
@@ -602,16 +610,8 @@ export default function App() {
             aria-pressed={screen !== 'read'}
             title="Oefenen & woordenlijst"
           >
-            🎯{vocab.length > 0 && <span className="vocab-count">{vocab.length}</span>}
-          </button>
-          <button
-            className="icon-btn"
-            onClick={toggleMute}
-            aria-label={muted ? 'Geluid aanzetten' : 'Geluid uitzetten (mute)'}
-            aria-pressed={muted}
-            title={muted ? 'Mute staat aan — klik om geluid aan te zetten' : 'Mute (alle spraak uit)'}
-          >
-            {muted ? '🔇' : '🔊'}
+            <span className="material-icons">track_changes</span>
+            {vocab.length > 0 && <span className="vocab-count">{vocab.length}</span>}
           </button>
           <button
             className="icon-btn"
@@ -619,7 +619,7 @@ export default function App() {
             aria-label="Instellingen en boek"
             title="Instellingen en boek"
           >
-            ⚙
+            <span className="material-icons">settings</span>
           </button>
         </div>
       </header>
@@ -629,7 +629,7 @@ export default function App() {
           <div className="screen-inner">
             <div className="screen-head">
               <button className="btn practice-back" onClick={() => setScreen('read')}>
-                ← Terug naar lezen
+                <span className="material-icons">arrow_back</span> Terug naar lezen
               </button>
               <h2 className="screen-title">Oefenen</h2>
             </div>
@@ -640,7 +640,9 @@ export default function App() {
                 disabled={!features.gemini}
                 title={!features.gemini ? 'Vereist een Gemini-key op de server' : undefined}
               >
-                <span className="practice-choice-title">💬 Chat</span>
+                <span className="practice-choice-title">
+                  <span className="material-icons">chat</span> Chat
+                </span>
                 <span className="practice-choice-desc">
                   Stel vrij vragen over Spaans aan de AI-tutor.
                   {!features.gemini && ' (niet beschikbaar — geen Gemini-key)'}
@@ -650,7 +652,9 @@ export default function App() {
                 className="btn practice-choice"
                 onClick={() => setScreen('vocab')}
               >
-                <span className="practice-choice-title">📖 Woordenlijst onderhouden ({vocab.length})</span>
+                <span className="practice-choice-title">
+                  <span className="material-icons">menu_book</span> Woordenlijst onderhouden ({vocab.length})
+                </span>
                 <span className="practice-choice-desc">
                   Bekijk, bewerk en verwijder je gemarkeerde woorden.
                 </span>
@@ -667,7 +671,9 @@ export default function App() {
                       : undefined
                 }
               >
-                <span className="practice-choice-title">✨ AI-voorbeeldzin</span>
+                <span className="practice-choice-title">
+                  <span className="material-icons">auto_awesome</span> AI-voorbeeldzin
+                </span>
                 <span className="practice-choice-desc">
                   Een verse Spaanse zin met het woord → vertaal naar het Nederlands.
                   {vocab.length === 0 && ' (nog geen woorden)'}
@@ -680,7 +686,9 @@ export default function App() {
                 disabled={vocab.length === 0}
                 title={vocab.length === 0 ? 'Nog geen woorden om te oefenen' : undefined}
               >
-                <span className="practice-choice-title">🃏 Woord-flashcard — Spaans → Nederlands</span>
+                <span className="practice-choice-title">
+                  <span className="material-icons">style</span> Woord-flashcard — Spaans → Nederlands
+                </span>
                 <span className="practice-choice-desc">
                   Spaans woord → betekenis + de zin waarin je 'm zag.
                   {vocab.length === 0 && ' (nog geen woorden)'}
@@ -692,7 +700,9 @@ export default function App() {
                 disabled={vocab.length === 0}
                 title={vocab.length === 0 ? 'Nog geen woorden om te oefenen' : undefined}
               >
-                <span className="practice-choice-title">🃏 Woord-flashcard — Nederlands → Spaans</span>
+                <span className="practice-choice-title">
+                  <span className="material-icons">style</span> Woord-flashcard — Nederlands → Spaans
+                </span>
                 <span className="practice-choice-desc">
                   Nederlandse betekenis → het Spaanse woord + de zin waarin je 'm zag.
                   {vocab.length === 0 && ' (nog geen woorden)'}
@@ -708,7 +718,7 @@ export default function App() {
           <div className="screen-inner">
             <div className="screen-head">
               <button className="btn practice-back" onClick={() => setScreen('menu')}>
-                ← Terug
+                <span className="material-icons">arrow_back</span> Terug
               </button>
               <h2 className="screen-title">Woordenlijst ({vocab.length})</h2>
             </div>
@@ -731,7 +741,15 @@ export default function App() {
                     onClick={() => requestSuggestion('auto')}
                     disabled={addText.trim() === '' || addLoading}
                   >
-                    {addLoading ? '✨ Bezig…' : '✨ Vertaal'}
+                    {addLoading ? (
+                      <>
+                        <span className="material-icons">auto_awesome</span> Bezig…
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-icons">auto_awesome</span> Vertaal
+                      </>
+                    )}
                   </button>
                 </div>
                 {addError && (
@@ -781,7 +799,7 @@ export default function App() {
                         disabled={addLoading}
                         title="Verkeerde richting gedetecteerd? Draai om."
                       >
-                        ↔ Omdraaien
+<span className="material-icons">swap_horiz</span> Omdraaien
                       </button>
                       <button className="btn" onClick={cancelSuggestion} disabled={addLoading}>
                         Annuleren
@@ -798,7 +816,10 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <p className="vocab-add-hint">✨ AI-toevoegen vereist een Gemini-key op de server.</p>
+              <p className="vocab-add-hint">
+                <span className="material-icons">auto_awesome</span> AI-toevoegen vereist een Gemini-key op de
+                server.
+              </p>
             )}
 
             {/* Filter over de bestaande lijst. */}
@@ -892,7 +913,7 @@ export default function App() {
                       aria-label={`Verwijder ${w.word}`}
                       title="Verwijderen"
                     >
-                      ×
+                      <span className="material-icons">close</span>
                     </button>
                   </li>
                 ))}
@@ -933,7 +954,9 @@ export default function App() {
       {settingsOpen && (
         <div className="panel">
           <div className="panel-row">
-            <span className="book-name" title={bookName}>📖 {bookName}</span>
+            <span className="book-name" title={bookName}>
+              <span className="material-icons">menu_book</span> {bookName}
+            </span>
             <input
               ref={fileInput}
               type="file"
@@ -1006,6 +1029,39 @@ export default function App() {
             <span className="speed-val">{rate.toFixed(1)}×</span>
           </label>
 
+          <div className="panel-field panel-toggle-row">
+            <span>Voorlezen (geluid ontvangen)</span>
+            <button
+              className="sound-toggle"
+              onClick={() => setAudioOn(audioMuted)}
+              aria-pressed={!audioMuted}
+              aria-label={audioMuted ? 'Voorlezen aanzetten' : 'Voorlezen uitzetten'}
+              title={audioMuted ? 'Voorlezen staat uit — klik om aan te zetten' : 'Voorlezen staat aan — klik om uit te zetten'}
+            >
+              <span className="material-icons" aria-hidden="true">
+                {audioMuted ? 'volume_off' : 'volume_up'}
+              </span>
+            </button>
+          </div>
+
+          <div className="panel-field panel-toggle-row">
+            <span>
+              Microfoon (geluid produceren)
+              <span className="toggle-hint">Nog niet in gebruik — voor komende spraak-oefeningen.</span>
+            </span>
+            <button
+              className="sound-toggle"
+              onClick={() => setMicOn(micMuted)}
+              aria-pressed={!micMuted}
+              aria-label={micMuted ? 'Microfoon aanzetten' : 'Microfoon uitzetten'}
+              title={micMuted ? 'Microfoon staat uit — klik om aan te zetten' : 'Microfoon staat aan — klik om uit te zetten'}
+            >
+              <span className="material-icons" aria-hidden="true">
+                {micMuted ? 'mic_off' : 'mic'}
+              </span>
+            </button>
+          </div>
+
           <label className="panel-field" title={!features.gemini ? 'Vereist een Gemini-key op de server' : undefined}>
             AI-vertaling
             <select
@@ -1041,8 +1097,10 @@ export default function App() {
             <span className="spinner" aria-hidden="true" /> AI-knipper is bezig…
           </p>
         )}
-        {reveal === 'none' ? (
-          <p className="listen-hint">🎧 Luister naar de zin</p>
+        {reveal === 'none' && !audioMuted ? (
+          <p className="listen-hint">
+            <span className="material-icons">headphones</span> Luister naar de zin
+          </p>
         ) : (
           <p className="spanish" lang="es" onMouseUp={handleSelection}>
             {tokenize(sentence).map((t, i) =>
@@ -1069,7 +1127,7 @@ export default function App() {
           <div className="dutch-block">
             {aiMode === 'first' && !aiNl && aiError ? (
               <p className="dutch ai-failed" title={aiError}>
-                ⚠️ AI-vertaling mislukt
+                <span className="material-icons">warning</span> AI-vertaling mislukt
               </p>
             ) : (
               <p
@@ -1078,17 +1136,25 @@ export default function App() {
                 title={aiMode === 'second' && !aiNl ? 'Klik voor een AI-vertaling met context' : undefined}
               >
                 {aiNl ?? nl ?? 'Vertalen…'}
-                {aiNl && <span className="ai-badge">✨ AI</span>}
+                {aiNl && (
+                  <span className="ai-badge">
+                    <span className="material-icons">auto_awesome</span> AI
+                  </span>
+                )}
               </p>
             )}
             {aiMode === 'second' && aiOptionOpen && !aiNl && (
               <button className="btn ai-translate-btn" onClick={runAiTranslate} disabled={aiTranslating}>
-                ✨{' '}
-                {aiTranslating
-                  ? 'AI-vertaling…'
-                  : aiError
-                    ? 'AI-vertaling mislukt ⚠️ — opnieuw'
-                    : 'AI-vertaling (met context)'}
+                <span className="material-icons">auto_awesome</span>{' '}
+                {aiTranslating ? (
+                  'AI-vertaling…'
+                ) : aiError ? (
+                  <>
+                    AI-vertaling mislukt <span className="material-icons">warning</span> — opnieuw
+                  </>
+                ) : (
+                  'AI-vertaling (met context)'
+                )}
               </button>
             )}
           </div>
@@ -1098,15 +1164,16 @@ export default function App() {
         {reveal !== 'none' && selection !== '' && (
           <div className="selection-actions">
             <button className="btn explain-btn" onClick={runExplain} disabled={explaining || !features.gemini}>
-              💡 {explaining ? 'Uitleg ophalen…' : `Leg uit: "${selection}"`}
+<span className="material-icons">lightbulb</span>{' '}
+              {explaining ? 'Uitleg ophalen…' : `Leg uit: "${selection}"`}
             </button>
             {markedKeys.has(phraseKey(selection)) ? (
               <button className="btn" disabled>
-                ✓ In lijst
+                <span className="material-icons">check</span> In lijst
               </button>
             ) : (
               <button className="btn" onClick={saveSelection}>
-                📑 Bewaar: "{selection}"
+                <span className="material-icons">bookmark_add</span> Bewaar: "{selection}"
               </button>
             )}
           </div>
@@ -1126,7 +1193,7 @@ export default function App() {
               }}
               aria-label="Sluiten"
             >
-              ×
+              <span className="material-icons">close</span>
             </button>
             <div className="explain-thread">
               {explainChat.map((m, i) =>
@@ -1145,7 +1212,7 @@ export default function App() {
             </div>
             <div className="explain-ask">
               <button className="btn" onClick={continueInChat} disabled={!features.gemini}>
-                💬 Verder in chat
+                <span className="material-icons">chat</span> Verder in chat
               </button>
             </div>
           </div>
@@ -1156,20 +1223,20 @@ export default function App() {
         {reader.error && <p className="warn">AI-knipper: {reader.error}</p>}
       </main>
 
-      {muteNotice && <p className="mute-notice">🔇 Geluid staat uit — mute is aan.</p>}
-
       <div className="controls">
-        <button className="btn help" onClick={handleListen} disabled={!ttsSupported()}>
-          🔊 Luister{reveal === 'none' ? '' : ' (nog een keer)'}
-        </button>
+        {!audioMuted && (
+          <button className="btn help" onClick={handleListen} disabled={!ttsSupported()}>
+            <span className="material-icons">volume_up</span> Luister{reveal === 'none' ? '' : ' (nog een keer)'}
+          </button>
+        )}
         {reveal === 'none' && (
           <button className="btn help" onClick={() => setReveal('spanish')}>
-            👁 Ondertiteld
+            <span className="material-icons">visibility</span> Ondertiteld
           </button>
         )}
         {reveal === 'spanish' && (
           <button className="btn help" onClick={() => setReveal('dutch')}>
-            🇳🇱 NL-zin
+            <span className="material-icons">translate</span> NL-zin
           </button>
         )}
       </div>
