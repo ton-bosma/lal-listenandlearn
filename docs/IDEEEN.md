@@ -55,6 +55,12 @@ Mijn ideeën die in deze sessie zijn gebouwd (het "hoe" staat in FUNCTIES.md):
   bestaande uitleg-chat: vanuit het keuzescherm een **vrije chat** starten, of vanuit een
   AI-uitleg **doorschakelen naar de chat met terugkeer** naar waar je vandaan kwam. Eén
   endpoint; de vrije vraag is bedoeld voor taal leren; elke keer **vers beginnen**.
+- **Twee app-brede geluidsinstellingen** (voorlezen = ontvangen, microfoon = produceren) + de
+  **stille-leesmodus-fallback** (voorlezen uit → tekst meteen zichtbaar, Luister-knoppen weg).
+  De mic-toggle staat al klaar maar is nog **inert**, voor de komende spraak-oefeningen. De
+  **fallback-regel** (nooit een doodlopend pad als een geluidsoptie uitstaat) geldt verder
+  voor alles wat nog komt.
+- **Material Icons** als standaard-iconenset door de hele app.
 
 ---
 
@@ -87,6 +93,15 @@ Spaans.
   of strikt uit de lijst?)*
 - Woordtypes maken meteen ook **filteren/ordenen** van de lijst per type mogelijk.
 
+**Route (afgesproken volgorde):**
+1. **Woordtype + infinitief-fundament** — de AI bepaalt bij toevoegen én bij markeren in de
+   tekst het type (werkwoord / zelfstandig / …) en voor werkwoorden de infinitief; opslaan als
+   veld op het woord. Levert meteen filteren per type op.
+2. **Werkwoorden-oefening — vervoegingen, beide richtingen** (twee menu-items), met
+   zelf-beoordelen/typen als basis.
+3. **Gesproken antwoord** (SpeechRecognition, gate't op de mic-toggle) en de **clitic-combi's**
+   als lagen erbovenop.
+
 ### Vocabulaire vooraf (front-loading), aanzetbare optie
 - De app kijkt X woorden / N zinnen vooruit en biedt de **lastige woorden** eerst aan — als
   vertaallijst óf als matching-spel. "Lastig" bepalen via een frequentielijst, Gemini, of mijn
@@ -102,16 +117,7 @@ Spaans.
   - Upgrade — echte scores: Azure Speech **Pronunciation Assessment** (per woord/foneem;
     aparte key). Doorbreekt "alles via Google", want daar heeft Google geen goede dienst voor.
 
-### Geluid: twee app-brede mutes + fallback-regel
-- **Twee losse geluidsopties**, app-breed:
-  - **Ontvangen geluid uit** — de app speelt geen audio af (voorlezen/TTS uit).
-  - **Geluid produceren uit** — geen microfoon/gesproken invoer.
-- **Fallback-regel**: elke audio-afhankelijke functie heeft altijd een non-audio variant —
-  nooit een doodlopend pad als een optie uitstaat. Voorbeelden: voorlezen uit → tekst tonen;
-  gesproken oefening met mic uit → typen of zelf-beoordelen.
-
 ### Lezen & boeken
-- **Stille (lees)modus:** kunnen lezen zonder audio/voorlezen.
 - **Taal als instelling (generiek maken):** bron-/doeltaal instelbaar zodat andere
   talencombinaties werken (nu hard Spaans → Nederlands).
 - **Instelling "achtergelaten stand onthouden"** i.p.v. altijd kaal terug.
