@@ -3,6 +3,7 @@ import type { VocabWord } from './lib/vocab'
 import { tokenize } from './lib/words'
 import { translateWords } from './lib/translate'
 import {
+  type PracticeDir,
   type PracticeSentence,
   type SrsState,
   buildRound,
@@ -27,6 +28,8 @@ const PREFETCH_AHEAD = 2
 interface Props {
   vocab: VocabWord[]
   mode: Mode
+  /** Richting van de woord-flashcard (alleen relevant bij mode==='flashcard'). */
+  flashDir?: PracticeDir
   onBack: () => void
   markedKeys: Set<string>
   onToggleMark: (key: string, raw: string, context: string, known?: string) => void
@@ -36,8 +39,21 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Onbekende fout.'
 }
 
-export default function PracticePanel({ vocab, mode, onBack, markedKeys, onToggleMark }: Props) {
+export default function PracticePanel({
+  vocab,
+  mode,
+  flashDir = 'es2nl',
+  onBack,
+  markedKeys,
+  onToggleMark,
+}: Props) {
   const isAi = mode === 'aisentence'
+  // Effectieve richting: alleen de woord-flashcard kent NL→ES; de AI-zin blijft altijd ES→NL.
+  const dir: PracticeDir = mode === 'flashcard' ? flashDir : 'es2nl'
+  const flashTitle =
+    dir === 'nl2es'
+      ? '🃏 Woord-flashcard — Nederlands → Spaans'
+      : '🃏 Woord-flashcard — Spaans → Nederlands'
 
   // SRS-stand (lokaal). We houden 'm in state zodat de UI meebeweegt, en persisteren via grade().
   const [srs, setSrs] = useState<SrsState>(() => loadSrs())
@@ -97,7 +113,7 @@ export default function PracticePanel({ vocab, mode, onBack, markedKeys, onToggl
   }
 
   function startRound() {
-    const round = buildRound(vocab, srs)
+    const round = buildRound(vocab, srs, dir)
     setQueue(round)
     setRoundSeed((s) => s + 1)
     setDone(0)
@@ -185,7 +201,7 @@ export default function PracticePanel({ vocab, mode, onBack, markedKeys, onToggl
 
   function handleGrade(correct: boolean) {
     if (!currentKey) return
-    const nextSrs = grade(currentKey, correct, srs)
+    const nextSrs = grade(currentKey, correct, srs, dir)
     setSrs(nextSrs)
     setFlipped(false)
     if (correct) {
@@ -210,7 +226,7 @@ export default function PracticePanel({ vocab, mode, onBack, markedKeys, onToggl
           <button className="btn practice-back" onClick={onBack}>
             ← Terug
           </button>
-          <span className="practice-title">{isAi ? '✨ AI-voorbeeldzin' : '🃏 Woord-flashcard'}</span>
+          <span className="practice-title">{isAi ? '✨ AI-voorbeeldzin' : flashTitle}</span>
         </div>
         <p className="practice-empty">
           Nog geen woorden om te oefenen. Markeer eerst wat woorden in de tekst.
@@ -259,7 +275,7 @@ export default function PracticePanel({ vocab, mode, onBack, markedKeys, onToggl
         <button className="btn practice-back" onClick={onBack}>
           ← Terug
         </button>
-        <span className="practice-title">{isAi ? '✨ AI-voorbeeldzin' : '🃏 Woord-flashcard'}</span>
+        <span className="practice-title">{isAi ? '✨ AI-voorbeeldzin' : flashTitle}</span>
         <span className="practice-progress">
           {Math.min(done + 1, total)} / {total}
         </span>
@@ -300,6 +316,8 @@ export default function PracticePanel({ vocab, mode, onBack, markedKeys, onToggl
                   </span>
                 )}
               </>
+            ) : dir === 'nl2es' ? (
+              <span className="practice-front">{currentWord?.translation || '—'}</span>
             ) : (
               <span className="practice-front" lang="es">
                 {currentWord?.word || '—'}
@@ -322,6 +340,17 @@ export default function PracticePanel({ vocab, mode, onBack, markedKeys, onToggl
           >
             {isAi ? (
               <span className="practice-back-nl">{aiSentence?.translation || '—'}</span>
+            ) : dir === 'nl2es' ? (
+              <>
+                <span className="practice-back-nl" lang="es">
+                  {currentWord?.word || '—'}
+                </span>
+                {currentWord?.context && (
+                  <span className="practice-back-context" lang="es">
+                    “{currentWord.context}”
+                  </span>
+                )}
+              </>
             ) : (
               <>
                 <span className="practice-back-nl">{currentWord?.translation || '—'}</span>

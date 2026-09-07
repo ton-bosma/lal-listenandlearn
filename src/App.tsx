@@ -53,11 +53,12 @@ type Reveal = 'none' | 'spanish' | 'dutch'
 //  'read'       -> de lezer
 //  'menu'       -> keuzescherm (onderhoud / AI-voorbeeldzin / woord-flashcard)
 //  'vocab'      -> woordenlijst onderhouden
-//  'flashcard'  -> oefening woord-flashcard
-//  'aisentence' -> oefening AI-voorbeeldzin
-//  'chat'       -> full-screen chat (vrije chat vanuit het menu, of vervolg vanuit de uitleg)
+//  'flashcard'   -> oefening woord-flashcard (Spaans → Nederlands)
+//  'flashcardNl' -> oefening woord-flashcard (Nederlands → Spaans)
+//  'aisentence'  -> oefening AI-voorbeeldzin
+//  'chat'        -> full-screen chat (vrije chat vanuit het menu, of vervolg vanuit de uitleg)
 // Terug = één stap omhoog: oefening/onderhoud → menu → lezen; chat → waar je vandaan kwam.
-type Screen = 'read' | 'menu' | 'vocab' | 'flashcard' | 'aisentence' | 'chat'
+type Screen = 'read' | 'menu' | 'vocab' | 'flashcard' | 'flashcardNl' | 'aisentence' | 'chat'
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Onbekende fout.'
@@ -679,9 +680,21 @@ export default function App() {
                 disabled={vocab.length === 0}
                 title={vocab.length === 0 ? 'Nog geen woorden om te oefenen' : undefined}
               >
-                <span className="practice-choice-title">🃏 Woord-flashcard</span>
+                <span className="practice-choice-title">🃏 Woord-flashcard — Spaans → Nederlands</span>
                 <span className="practice-choice-desc">
                   Spaans woord → betekenis + de zin waarin je 'm zag.
+                  {vocab.length === 0 && ' (nog geen woorden)'}
+                </span>
+              </button>
+              <button
+                className="btn practice-choice"
+                onClick={() => setScreen('flashcardNl')}
+                disabled={vocab.length === 0}
+                title={vocab.length === 0 ? 'Nog geen woorden om te oefenen' : undefined}
+              >
+                <span className="practice-choice-title">🃏 Woord-flashcard — Nederlands → Spaans</span>
+                <span className="practice-choice-desc">
+                  Nederlandse betekenis → het Spaanse woord + de zin waarin je 'm zag.
                   {vocab.length === 0 && ' (nog geen woorden)'}
                 </span>
               </button>
@@ -889,11 +902,12 @@ export default function App() {
         </div>
       )}
 
-      {(screen === 'flashcard' || screen === 'aisentence') && (
+      {(screen === 'flashcard' || screen === 'flashcardNl' || screen === 'aisentence') && (
         <div className="screen" aria-label="Oefenen">
           <div className="screen-inner">
             <PracticePanel
-              mode={screen}
+              mode={screen === 'aisentence' ? 'aisentence' : 'flashcard'}
+              flashDir={screen === 'flashcardNl' ? 'nl2es' : 'es2nl'}
               vocab={vocab}
               onBack={() => setScreen('menu')}
               markedKeys={markedKeys}

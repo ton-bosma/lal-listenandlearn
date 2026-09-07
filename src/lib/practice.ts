@@ -16,6 +16,18 @@ export interface SrsEntry {
 
 export type SrsState = Record<string, SrsEntry>
 
+/** Oefen-richting van de woord-flashcard. */
+export type PracticeDir = 'es2nl' | 'nl2es'
+
+/**
+ * SRS-sleutel voor een woord in een gegeven richting. ES→NL (en de AI-zin) gebruiken de kale
+ * `wordKey` (backward compatible met bestaande voortgang); NL→ES krijgt een eigen suffix zodat het
+ * los telt.
+ */
+export function srsKeyFor(wordKey: string, dir: PracticeDir = 'es2nl'): string {
+  return dir === 'nl2es' ? `${wordKey}::nl2es` : wordKey
+}
+
 /** Leest de SRS-stand uit localStorage; bij ontbreken/corrupte data een lege stand. */
 export function loadSrs(): SrsState {
   try {
@@ -57,8 +69,12 @@ function shuffle<T>(items: T[]): T[] {
  * Bouwt de volgorde van een ronde: alle woord-keys, gesorteerd op box (laag eerst, dus wat je
  * minder goed kent komt eerder), en binnen een gelijke box willekeurig geschud.
  */
-export function buildRound(words: VocabWord[], state: SrsState = loadSrs()): string[] {
-  const boxOf = (key: string) => state[key]?.box ?? 0
+export function buildRound(
+  words: VocabWord[],
+  state: SrsState = loadSrs(),
+  dir: PracticeDir = 'es2nl',
+): string[] {
+  const boxOf = (wordKey: string) => state[srsKeyFor(wordKey, dir)]?.box ?? 0
   // Groepeer per box, shuffle binnen de groep, en plak op oplopende box aan elkaar.
   const byBox = new Map<number, string[]>()
   for (const w of words) {
@@ -75,11 +91,17 @@ export function buildRound(words: VocabWord[], state: SrsState = loadSrs()): str
  * Verwerkt een beoordeling: Goed → box+1 (tot MAX_BOX), Fout → terug naar box 0. Persisteert
  * meteen en geeft de bijgewerkte stand terug (handig voor React-state).
  */
-export function grade(key: string, correct: boolean, state: SrsState = loadSrs()): SrsState {
-  const box = state[key]?.box ?? 0
+export function grade(
+  wordKey: string,
+  correct: boolean,
+  state: SrsState = loadSrs(),
+  dir: PracticeDir = 'es2nl',
+): SrsState {
+  const sk = srsKeyFor(wordKey, dir)
+  const box = state[sk]?.box ?? 0
   const next: SrsState = {
     ...state,
-    [key]: { box: correct ? Math.min(box + 1, MAX_BOX) : 0 },
+    [sk]: { box: correct ? Math.min(box + 1, MAX_BOX) : 0 },
   }
   saveSrs(next)
   return next
