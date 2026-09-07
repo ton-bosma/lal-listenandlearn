@@ -1,21 +1,33 @@
-// "Selecteer + uitleg" (Fase 3): een geselecteerd stukje Spaans laten uitleggen door de
-// backend (/api/explain, Gemini). De prompt, de key en de gedeelde cache zitten server-side
-// (zie server/index.js en docs/DEPLOY.md). Hier houden we alleen een lichte sessie-cache.
+// Chat met de tutor (Gemini) via de backend (/api/chat). Twee ingangen op één contract:
+//  - "Selecteer + uitleg": een geselecteerd stukje Spaans laten uitleggen (initiële uitleg).
+//  - Vrije chat / vervolgvragen: een gesprek met eerdere beurten (+ optionele fragment-context).
+// De prompt, de key en de gedeelde cache zitten server-side (zie server/index.js en docs/DEPLOY.md).
+// Hier houden we alleen een lichte sessie-cache voor de initiële uitleg.
 
 const cache = new Map<string, string>()
 
 // Sleutel combineert zin + fragment (␟ als scheider komt niet in tekst voor).
 const cacheKeyFor = (sentence: string, fragment: string) => `${sentence}␟${fragment}`
 
+/** Eén bericht in het chat-gesprek: 'model' = de AI, 'user' = jouw (vervolg)vraag. */
+export interface ChatMsg {
+  role: 'user' | 'model'
+  text: string
+}
+
+/**
+ * Initiële uitleg van een geselecteerd fragment binnen zijn zin. Lege history + geen question +
+ * alleen context → de backend geeft de openings-uitleg terug. Client-side gecachet per zin+fragment.
+ */
 export async function explainFragment(fragment: string, sentence: string): Promise<string> {
   const ck = cacheKeyFor(sentence, fragment)
   const cached = cache.get(ck)
   if (cached) return cached
 
-  const res = await fetch('/api/explain', {
+  const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sentence, fragment }),
+    body: JSON.stringify({ context: { fragment, sentence } }),
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
@@ -29,26 +41,19 @@ export async function explainFragment(fragment: string, sentence: string): Promi
   return text
 }
 
-/** Eén bericht in het uitleg-gesprek: 'model' = de AI, 'user' = jouw vervolgvraag. */
-export interface ChatMsg {
-  role: 'user' | 'model'
-  text: string
-}
-
 /**
- * Vervolgvraag binnen het uitleg-gesprek. Stuurt de zin + het fragment + de eerdere beurten mee
- * als context. Niet gecachet (gespreksafhankelijk).
+ * Een (vervolg)vraag in het chat-gesprek. Stuurt de eerdere beurten mee als history, plus optioneel
+ * de fragment-context (zin + geselecteerd stukje). Niet gecachet (gespreksafhankelijk).
  */
-export async function explainFollowup(
-  fragment: string,
-  sentence: string,
+export async function chatSend(
   history: ChatMsg[],
   question: string,
+  context?: { fragment: string; sentence: string },
 ): Promise<string> {
-  const res = await fetch('/api/explain', {
+  const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sentence, fragment, history, question }),
+    body: JSON.stringify({ history, question, context }),
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')

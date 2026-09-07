@@ -301,36 +301,47 @@ body {
   color: var(--accent);
 }
 
-/* Woordenlijst-zijpaneel (schuift van rechts eróver; leesvenster verspringt niet) */
-.vocab-backdrop {
+/* Full-screen scherm (keuze / onderhoud / oefening): dekkende overlay bovenop de lezer. */
+.screen {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.25);
-  z-index: 20;
+  z-index: 30;
+  overflow: auto;
+  background: var(--bg);
+  animation: screen-fade 0.14s ease-out;
 }
 
-.vocab-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  height: 100%;
-  width: min(360px, 85vw);
-  background: var(--panel);
-  border-left: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  z-index: 21;
+.screen-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
   display: flex;
   flex-direction: column;
-  animation: vocab-slide 0.16s ease-out;
+  min-height: 100vh;
 }
 
-@keyframes vocab-slide {
+@keyframes screen-fade {
   from {
-    transform: translateX(100%);
+    opacity: 0;
   }
   to {
-    transform: translateX(0);
+    opacity: 1;
   }
+}
+
+.screen-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+
+.screen-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
 }
 
 .vocab-head {
@@ -357,7 +368,7 @@ body {
 
 .vocab-item {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr auto auto;
   align-items: center;
   gap: 10px;
   padding: 8px 16px;
@@ -423,6 +434,157 @@ body {
 .vocab-del:hover {
   color: var(--accent-2);
   background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+}
+
+/* Voortgang-indicator: MAX_BOX segmentjes, gevuld = gekend (accent), leeg = nieuw (border). */
+.vocab-progress {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.vocab-seg {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.vocab-seg.filled {
+  background: var(--accent);
+}
+
+/* Filterveld boven de lijst. */
+.vocab-filter {
+  font: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.vocab-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* AI-toevoegen-blok. */
+.vocab-add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.vocab-add-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 12px 16px;
+  margin: 0 0 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.vocab-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.vocab-add-input {
+  font: inherit;
+  font-size: 0.9rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.vocab-add-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.vocab-add-error {
+  color: var(--accent-2);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.vocab-add-retry {
+  font: inherit;
+  font-size: 0.85rem;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+/* Bewerkbaar voorstel-kaartje. */
+.vocab-add-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.vocab-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.vocab-add-field input {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.vocab-add-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.vocab-add-dup {
+  color: var(--accent-2);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.vocab-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.vocab-add-actions .btn {
+  padding: 7px 12px;
+  font-size: 0.88rem;
 }
 
 /* Selecteer + uitleg (Fase 3) */
@@ -570,6 +732,26 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
+}
+
+/* Full-screen chat binnen .screen-inner: thread vult + scrollt, invoer blijft onderaan. */
+.chat-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chat-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.chat-ask {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 /* Woord met hover-tooltip */
@@ -733,6 +915,240 @@ body {
   text-align: center;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+/* ── Oefenmodus (flashcards op het oefen-scherm) ────────────────────────── */
+
+/* Oefen-container: vult het scherm en scrollt mee met de .screen-overlay. */
+.practice {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 14px;
+}
+
+.practice-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.practice-back {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+
+.practice-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.practice-progress {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.practice-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* Menu: de twee oefeningen als grote keuze-knoppen. */
+.practice-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.practice-lead {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.practice-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 14px 16px;
+  white-space: normal;
+}
+
+.practice-choice-title {
+  font-weight: 600;
+  font-size: 0.98rem;
+}
+
+.practice-choice-desc {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* De kaart zelf (voorkant/achterkant). */
+.practice-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 20px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.08s;
+  user-select: none;
+}
+
+.practice-card:hover {
+  border-color: var(--accent);
+}
+
+.practice-card:active {
+  transform: translateY(1px);
+}
+
+.practice-card.not-ready {
+  cursor: default;
+}
+
+.practice-card.not-ready:hover {
+  border-color: var(--border);
+}
+
+.practice-card.flipped {
+  border-color: var(--accent);
+}
+
+.practice-card-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  width: 100%;
+}
+
+.practice-card-back {
+  cursor: pointer;
+}
+
+.practice-front {
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.practice-back-nl {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.practice-back-context {
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-style: italic;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.practice-flip-hint {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.practice-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.practice-card-error {
+  color: var(--accent-2);
+  font-size: 0.95rem;
+}
+
+.practice-retry {
+  align-self: center;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+/* Goed / Fout beoordeling. */
+.practice-grade {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.practice-wrong,
+.practice-right {
+  flex: 1;
+  max-width: 160px;
+  font-weight: 600;
+}
+
+.practice-wrong {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.practice-wrong:hover:not(:disabled) {
+  border-color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+}
+
+.practice-right {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.practice-right:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.practice-tip {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: center;
+  margin: 0;
+}
+
+/* Einde-ronde samenvatting. */
+.practice-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding-top: 20px;
+}
+
+.practice-summary-line {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.practice-summary-sub {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.practice-summary-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 @media (max-width: 480px) {

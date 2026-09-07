@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { demoSentences } from './data/demoText'
 import { cleanWord, normalizeWord, tokenize } from './lib/words'
 import {
@@ -34,16 +34,30 @@ import { buildChunks } from './lib/chunk'
 import { useReader } from './lib/reader'
 import { detectBookStart } from './lib/frontmatter'
 import { translateSentence, translateWords } from './lib/translate'
-import { type ChatMsg, explainFollowup, explainFragment } from './lib/explain'
+import { type ChatMsg, explainFragment } from './lib/explain'
 import { mdToHtml } from './lib/markdown'
 import { type Features, NO_FEATURES, fetchFeatures } from './lib/health'
 import { type VocabWord, addVocab, listVocab, removeVocab, updateVocab } from './lib/vocab'
+import { type WordSuggestion, fetchWordSuggestion } from './lib/addword'
+import { MAX_BOX, loadSrs } from './lib/practice'
+import PracticePanel from './PracticePanel'
+import ChatPanel from './ChatPanel'
 
 // De drie zichtbaarheidsniveaus van de progressieve hulp (zie docs/SPEC.md):
 //  'none'    -> Luister: alleen audio, Spaanse tekst verborgen
 //  'spanish' -> Ondertiteld: Spaanse zin zichtbaar met woord-hovers (live vertaald)
 //  'dutch'   -> NL-zin: volledige vertaling eronder, Spaans blijft staan
 type Reveal = 'none' | 'spanish' | 'dutch'
+
+// De schermen van het full-screen schermmodel:
+//  'read'       -> de lezer
+//  'menu'       -> keuzescherm (onderhoud / AI-voorbeeldzin / woord-flashcard)
+//  'vocab'      -> woordenlijst onderhouden
+//  'flashcard'  -> oefening woord-flashcard
+//  'aisentence' -> oefening AI-voorbeeldzin
+//  'chat'       -> full-screen chat (vrije chat vanuit het menu, of vervolg vanuit de uitleg)
+// Terug = één stap omhoog: oefening/onderhoud → menu → lezen; chat → waar je vandaan kwam.
+type Screen = 'read' | 'menu' | 'vocab' | 'flashcard' | 'aisentence' | 'chat'
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Onbekende fout.'
@@ -100,7 +114,9 @@ export default function App() {
 
   // Woordenlijst (gemarkeerde onbekende woorden), server-side bewaard.
   const [vocab, setVocab] = useState<VocabWord[]>([])
-  const [vocabOpen, setVocabOpen] = useState(false)
+  // Actief scherm (full-screen schermmodel). 'read' = de lezer; de rest zijn overlay-schermen
+  // bovenop de (behouden) leesstaat. Terug = één stap omhoog (oefening/onderhoud → menu → lezen).
+  const [screen, setScreen] = useState<Screen>('read')
   const markedKeys = new Set(vocab.map((w) => w.key))
   // Inline bewerken van een vertaling in het paneel.
   const [editKey, setEditKey] = useState<string | null>(null)
@@ -108,6 +124,19 @@ export default function App() {
   // Inline bewerken van het woord zelf.
   const [editWordKey, setEditWordKey] = useState<string | null>(null)
   const [editWordVal, setEditWordVal] = useState('')
+
+  // Onderhoudscherm: live filter over de lijst (substring op woord/vertaling/context).
+  const [vocabFilter, setVocabFilter] = useState('')
+  // SRS-stand voor de voortgang-indicator: één keer inlezen bij het (her)openen van een scherm
+  // (per apparaat, localStorage). Verandert tijdens onderhoud niet, dus dit volstaat.
+  const srs = useMemo(() => loadSrs(), [screen])
+
+  // AI-toevoegen: invoerveld, het (bewerkbare) voorstel, laadstatus en meldingen.
+  const [addText, setAddText] = useState('')
+  const [addSuggestion, setAddSuggestion] = useState<WordSuggestion | null>(null)
+  const [addLoading, setAddLoading] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [addDupNotice, setAddDupNotice] = useState<string | null>(null)
 
   // Stemkeuze: browserstemmen (async) + optionele Cloud-stemmen.
   const [voices, setVoices] = useState(() => getSpanishVoices())
@@ -157,15 +186,21 @@ export default function App() {
   const [aiTranslating, setAiTranslating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
 
-  // Selecteer + uitleg (Fase 3).
+  // Selecteer + uitleg (Fase 3): de initiële uitleg toont inline; vervolgvragen verhuizen naar het
+  // chat-scherm. `explainChat` bevat de (initiële) uitleg-beurt, `explainCtx` waar die over gaat
+  // (fragment+zin). Reset bij zin-wissel.
   const [selection, setSelection] = useState('')
-  // Uitleg als multi-turn chat: de thread (uitleg + vervolgvragen/-antwoorden), waar de chat over
-  // gaat (fragment+zin), en het vervolgvraag-invoerveld. Reset bij zin-wissel.
   const [explainChat, setExplainChat] = useState<ChatMsg[]>([])
   const [explainCtx, setExplainCtx] = useState<{ fragment: string; sentence: string } | null>(null)
-  const [followupVal, setFollowupVal] = useState('')
   const [explaining, setExplaining] = useState(false)
   const [explainError, setExplainError] = useState<string | null>(null)
+
+  // Full-screen chat: de seed-history + optionele context waarmee het scherm start, de kop-titel,
+  // en waar "← Terug" naartoe gaat. Vers per keer (geen persistentie).
+  const [chatSeed, setChatSeed] = useState<ChatMsg[]>([])
+  const [chatContext, setChatContext] = useState<{ fragment: string; sentence: string } | null>(null)
+  const [chatTitle, setChatTitle] = useState('')
+  const [chatReturnTo, setChatReturnTo] = useState<Screen>('menu')
 
   // Huidige positie bij de hand voor async callbacks (voorkomt dat een laat resultaat op de
   // verkeerde zin belandt). `pos` verandert bij elke echte positiewissel, ook over chunk-/
@@ -181,7 +216,6 @@ export default function App() {
     setSelection('')
     setExplainChat([])
     setExplainCtx(null)
-    setFollowupVal('')
     setExplainError(null)
     setAiNl(null)
     setAiOptionOpen(false)
@@ -391,10 +425,9 @@ export default function App() {
     const text = window.getSelection()?.toString().trim() ?? ''
     setSelection(text)
     if (text === '') return
-    // Nieuwe selectie -> oud uitleg-gesprek opruimen.
+    // Nieuwe selectie -> oude uitleg opruimen.
     setExplainChat([])
     setExplainCtx(null)
-    setFollowupVal('')
     setExplainError(null)
   }
 
@@ -405,7 +438,6 @@ export default function App() {
     setExplaining(true)
     setExplainChat([])
     setExplainCtx(null)
-    setFollowupVal('')
     setExplainError(null)
     explainFragment(fragment, ctxSentence)
       .then((text) => {
@@ -416,37 +448,45 @@ export default function App() {
       .finally(() => setExplaining(false))
   }
 
-  // Vervolgvraag binnen het uitleg-gesprek (fragment + zin + eerdere beurten als context).
-  function askFollowup() {
-    const q = followupVal.trim()
-    if (q === '' || !explainCtx || explaining) return
-    const history = explainChat
-    setFollowupVal('')
-    setExplainChat((prev) => [...prev, { role: 'user', text: q }])
-    setExplaining(true)
-    setExplainError(null)
-    explainFollowup(explainCtx.fragment, explainCtx.sentence, history, q)
-      .then((text) => setExplainChat((prev) => [...prev, { role: 'model', text }]))
-      .catch((err) => setExplainError(errMessage(err)))
-      .finally(() => setExplaining(false))
+  // Vanuit de inline uitleg doorgaan in het full-screen chat-scherm: de uitleg-thread + fragment-
+  // context als seed meegeven, en terugkeren naar de lezer.
+  function continueInChat() {
+    if (!explainCtx) return
+    setChatSeed(explainChat)
+    setChatContext(explainCtx)
+    setChatTitle(`Uitleg: "${explainCtx.fragment}"`)
+    setChatReturnTo('read')
+    setScreen('chat')
+  }
+
+  // Vrije chat vanuit het keuzescherm: verse thread, geen fragment-context.
+  function openFreeChat() {
+    setChatSeed([])
+    setChatContext(null)
+    setChatTitle('💬 Chat — Spaans leren')
+    setChatReturnTo('menu')
+    setScreen('chat')
   }
 
   // Klik op een woord = markeren/ontmarkeren (alleen bij een kále klik, niet bij een selectie).
-  function toggleMark(key: string, raw: string) {
+  // context/known optioneel: de reader levert ze via de defaults (huidige zin + reeds opgehaalde
+  // glosses); de oefenkaart geeft zijn eigen AI-zin + gloss mee.
+  function toggleMark(key: string, raw: string, context?: string, known?: string) {
     if ((window.getSelection()?.toString().trim() ?? '') !== '') return // selectie = "Leg uit"
     if (markedKeys.has(key)) {
       setVocab((prev) => prev.filter((w) => w.key !== key)) // optimistisch
       removeVocab(key).then(setVocab).catch(() => {})
       return
     }
-    // Vertaling uit de reeds opgehaalde glossen; anders even los ophalen.
-    const known = glosses?.[key]
+    const ctx = context ?? sentence
+    // Vertaling uit de meegegeven/reeds opgehaalde glossen; anders even los ophalen.
+    const knownTr = known ?? glosses?.[key]
     const word = cleanWord(raw) // opgeschoonde weergave (lowercase, leestekens weg, afkortingen heel)
     const add = (translation: string) => {
-      setVocab((prev) => [...prev, { key, word, translation, context: sentence }]) // optimistisch
-      addVocab({ key, word, translation, context: sentence }).then(setVocab).catch(() => {})
+      setVocab((prev) => [...prev, { key, word, translation, context: ctx }]) // optimistisch
+      addVocab({ key, word, translation, context: ctx }).then(setVocab).catch(() => {})
     }
-    if (typeof known === 'string' && known !== '') add(known)
+    if (typeof knownTr === 'string' && knownTr !== '') add(knownTr)
     else translateWords([key]).then((m) => add(m[key] ?? '')).catch(() => add(''))
   }
 
@@ -486,6 +526,63 @@ export default function App() {
     updateVocab(key, { word, newKey: newKey !== key ? newKey : undefined }).then(setVocab).catch(() => {})
   }
 
+  // AI-toevoegen: een voorstel ophalen voor de ingetypte tekst. `direction` = 'auto' bij "Vraag
+  // AI"; bij "Omdraaien" forceren we de tegenovergestelde richting (zelfde brontekst).
+  function requestSuggestion(direction: 'auto' | 'nl2es' | 'es2nl') {
+    const text = addText.trim()
+    if (text === '' || addLoading) return
+    setAddLoading(true)
+    setAddError(null)
+    setAddDupNotice(null)
+    fetchWordSuggestion(text, direction)
+      .then(setAddSuggestion)
+      .catch((err) => setAddError(errMessage(err)))
+      .finally(() => setAddLoading(false))
+  }
+
+  // Omdraaien: opnieuw ophalen met de tegenovergestelde richting van de laatste detectie, zodat
+  // je een verkeerde auto-detectie (bijv. NL-woord voor Spaans aangezien) corrigeert.
+  function flipSuggestion() {
+    if (!addSuggestion || addLoading) return
+    requestSuggestion(addSuggestion.detected === 'nl2es' ? 'es2nl' : 'nl2es')
+  }
+
+  // Het (bewerkte) voorstel toevoegen aan de lijst — zelfde patroon als saveSelection/toggleMark.
+  function addSuggestionToVocab() {
+    if (!addSuggestion) return
+    const key = phraseKey(addSuggestion.word)
+    if (key === '') return
+    if (markedKeys.has(key)) {
+      setAddDupNotice('Dit woord staat al in de lijst.')
+      return
+    }
+    const word = cleanWord(addSuggestion.word)
+    const translation = addSuggestion.translation.trim()
+    const context = addSuggestion.context.trim()
+    setVocab((prev) => (prev.some((w) => w.key === key) ? prev : [...prev, { key, word, translation, context }])) // optimistisch
+    addVocab({ key, word, translation, context }).then(setVocab).catch(() => {})
+    setAddText('')
+    setAddSuggestion(null)
+    setAddError(null)
+    setAddDupNotice(null)
+  }
+
+  // Voorstel wissen (annuleren), het invoerveld laten staan.
+  function cancelSuggestion() {
+    setAddSuggestion(null)
+    setAddError(null)
+    setAddDupNotice(null)
+  }
+
+  // Gefilterde lijst voor het onderhoudscherm (substring, hoofdletterongevoelig).
+  const vocabQuery = vocabFilter.trim().toLowerCase()
+  const filteredVocab =
+    vocabQuery === ''
+      ? vocab
+      : vocab.filter((w) =>
+          `${w.word} ${w.translation} ${w.context}`.toLowerCase().includes(vocabQuery),
+        )
+
   return (
     <div className="app">
       <header className="topbar">
@@ -499,12 +596,12 @@ export default function App() {
           </span>
           <button
             className="icon-btn vocab-btn"
-            onClick={() => setVocabOpen((o) => !o)}
-            aria-label="Woordenlijst"
-            aria-pressed={vocabOpen}
-            title="Woordenlijst (gemarkeerde woorden)"
+            onClick={() => setScreen('menu')}
+            aria-label="Oefenen en woordenlijst"
+            aria-pressed={screen !== 'read'}
+            title="Oefenen & woordenlijst"
           >
-            📑{vocab.length > 0 && <span className="vocab-count">{vocab.length}</span>}
+            🎯{vocab.length > 0 && <span className="vocab-count">{vocab.length}</span>}
           </button>
           <button
             className="icon-btn"
@@ -526,21 +623,188 @@ export default function App() {
         </div>
       </header>
 
-      {vocabOpen && (
-        <>
-          <div className="vocab-backdrop" onClick={() => setVocabOpen(false)} />
-          <aside className="vocab-panel" aria-label="Woordenlijst">
-            <div className="vocab-head">
-              <span>Woordenlijst ({vocab.length})</span>
-              <button className="icon-btn" onClick={() => setVocabOpen(false)} aria-label="Sluiten">
-                ×
+      {screen === 'menu' && (
+        <div className="screen" aria-label="Oefenen">
+          <div className="screen-inner">
+            <div className="screen-head">
+              <button className="btn practice-back" onClick={() => setScreen('read')}>
+                ← Terug naar lezen
+              </button>
+              <h2 className="screen-title">Oefenen</h2>
+            </div>
+            <div className="practice-menu">
+              <button
+                className="btn practice-choice"
+                onClick={openFreeChat}
+                disabled={!features.gemini}
+                title={!features.gemini ? 'Vereist een Gemini-key op de server' : undefined}
+              >
+                <span className="practice-choice-title">💬 Chat</span>
+                <span className="practice-choice-desc">
+                  Stel vrij vragen over Spaans aan de AI-tutor.
+                  {!features.gemini && ' (niet beschikbaar — geen Gemini-key)'}
+                </span>
+              </button>
+              <button
+                className="btn practice-choice"
+                onClick={() => setScreen('vocab')}
+              >
+                <span className="practice-choice-title">📖 Woordenlijst onderhouden ({vocab.length})</span>
+                <span className="practice-choice-desc">
+                  Bekijk, bewerk en verwijder je gemarkeerde woorden.
+                </span>
+              </button>
+              <button
+                className="btn practice-choice"
+                onClick={() => setScreen('aisentence')}
+                disabled={vocab.length === 0 || !features.gemini}
+                title={
+                  vocab.length === 0
+                    ? 'Nog geen woorden om te oefenen'
+                    : !features.gemini
+                      ? 'Vereist een Gemini-key op de server'
+                      : undefined
+                }
+              >
+                <span className="practice-choice-title">✨ AI-voorbeeldzin</span>
+                <span className="practice-choice-desc">
+                  Een verse Spaanse zin met het woord → vertaal naar het Nederlands.
+                  {vocab.length === 0 && ' (nog geen woorden)'}
+                  {vocab.length > 0 && !features.gemini && ' (niet beschikbaar — geen Gemini-key)'}
+                </span>
+              </button>
+              <button
+                className="btn practice-choice"
+                onClick={() => setScreen('flashcard')}
+                disabled={vocab.length === 0}
+                title={vocab.length === 0 ? 'Nog geen woorden om te oefenen' : undefined}
+              >
+                <span className="practice-choice-title">🃏 Woord-flashcard</span>
+                <span className="practice-choice-desc">
+                  Spaans woord → betekenis + de zin waarin je 'm zag.
+                  {vocab.length === 0 && ' (nog geen woorden)'}
+                </span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {screen === 'vocab' && (
+        <div className="screen" aria-label="Woordenlijst">
+          <div className="screen-inner">
+            <div className="screen-head">
+              <button className="btn practice-back" onClick={() => setScreen('menu')}>
+                ← Terug
+              </button>
+              <h2 className="screen-title">Woordenlijst ({vocab.length})</h2>
+            </div>
+
+            {/* AI-toevoegen: typ een woord (NL of ES) en laat de AI vertaling + voorbeeldzin maken. */}
+            {features.gemini ? (
+              <div className="vocab-add">
+                <div className="vocab-add-row">
+                  <input
+                    className="vocab-add-input"
+                    placeholder="Typ een woord (NL of Spaans)…"
+                    value={addText}
+                    onChange={(e) => setAddText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') requestSuggestion('auto')
+                    }}
+                  />
+                  <button
+                    className="btn"
+                    onClick={() => requestSuggestion('auto')}
+                    disabled={addText.trim() === '' || addLoading}
+                  >
+                    {addLoading ? '✨ Bezig…' : '✨ Vertaal'}
+                  </button>
+                </div>
+                {addError && (
+                  <p className="vocab-add-error">
+                    {addError}{' '}
+                    <button className="vocab-add-retry" onClick={() => requestSuggestion('auto')}>
+                      Opnieuw
+                    </button>
+                  </p>
+                )}
+                {addSuggestion && (
+                  <div className="vocab-add-card">
+                    <label className="vocab-add-field">
+                      <span>Spaans</span>
+                      <input
+                        lang="es"
+                        value={addSuggestion.word}
+                        onChange={(e) =>
+                          setAddSuggestion((s) => (s ? { ...s, word: e.target.value } : s))
+                        }
+                      />
+                    </label>
+                    <label className="vocab-add-field">
+                      <span>Vertaling</span>
+                      <input
+                        value={addSuggestion.translation}
+                        onChange={(e) =>
+                          setAddSuggestion((s) => (s ? { ...s, translation: e.target.value } : s))
+                        }
+                      />
+                    </label>
+                    <label className="vocab-add-field">
+                      <span>Voorbeeldzin</span>
+                      <input
+                        lang="es"
+                        value={addSuggestion.context}
+                        onChange={(e) =>
+                          setAddSuggestion((s) => (s ? { ...s, context: e.target.value } : s))
+                        }
+                      />
+                    </label>
+                    {addDupNotice && <p className="vocab-add-dup">{addDupNotice}</p>}
+                    <div className="vocab-add-actions">
+                      <button
+                        className="btn"
+                        onClick={flipSuggestion}
+                        disabled={addLoading}
+                        title="Verkeerde richting gedetecteerd? Draai om."
+                      >
+                        ↔ Omdraaien
+                      </button>
+                      <button className="btn" onClick={cancelSuggestion} disabled={addLoading}>
+                        Annuleren
+                      </button>
+                      <button
+                        className="btn help"
+                        onClick={addSuggestionToVocab}
+                        disabled={addLoading || addSuggestion.word.trim() === ''}
+                      >
+                        Toevoegen
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="vocab-add-hint">✨ AI-toevoegen vereist een Gemini-key op de server.</p>
+            )}
+
+            {/* Filter over de bestaande lijst. */}
+            {vocab.length > 0 && (
+              <input
+                className="vocab-filter"
+                placeholder="Zoek in je woorden…"
+                value={vocabFilter}
+                onChange={(e) => setVocabFilter(e.target.value)}
+              />
+            )}
+
             {vocab.length === 0 ? (
               <p className="vocab-empty">Nog geen woorden. Klik in de Spaanse zin op een woord dat je niet kent.</p>
+            ) : filteredVocab.length === 0 ? (
+              <p className="vocab-empty">Geen woorden gevonden voor "{vocabFilter.trim()}".</p>
             ) : (
               <ul className="vocab-list">
-                {vocab.map((w) => (
+                {filteredVocab.map((w) => (
                   <li className="vocab-item" key={w.key}>
                     {editWordKey === w.key ? (
                       <input
@@ -592,6 +856,20 @@ export default function App() {
                         {w.translation || '—'}
                       </span>
                     )}
+                    {(() => {
+                      const box = srs[w.key]?.box ?? 0
+                      return (
+                        <span
+                          className="vocab-progress"
+                          title={`Voortgang: box ${box} / ${MAX_BOX}`}
+                          aria-label={`Voortgang: box ${box} van ${MAX_BOX}`}
+                        >
+                          {Array.from({ length: MAX_BOX }, (_, i) => (
+                            <span key={i} className={`vocab-seg${i < box ? ' filled' : ''}`} />
+                          ))}
+                        </span>
+                      )
+                    })()}
                     <button
                       className="vocab-del"
                       onClick={() => {
@@ -607,8 +885,35 @@ export default function App() {
                 ))}
               </ul>
             )}
-          </aside>
-        </>
+          </div>
+        </div>
+      )}
+
+      {(screen === 'flashcard' || screen === 'aisentence') && (
+        <div className="screen" aria-label="Oefenen">
+          <div className="screen-inner">
+            <PracticePanel
+              mode={screen}
+              vocab={vocab}
+              onBack={() => setScreen('menu')}
+              markedKeys={markedKeys}
+              onToggleMark={toggleMark}
+            />
+          </div>
+        </div>
+      )}
+
+      {screen === 'chat' && (
+        <div className="screen" aria-label="Chat">
+          <div className="screen-inner">
+            <ChatPanel
+              title={chatTitle}
+              seed={chatSeed}
+              context={chatContext ?? undefined}
+              onBack={() => setScreen(chatReturnTo)}
+            />
+          </div>
+        </div>
       )}
 
       {settingsOpen && (
@@ -804,7 +1109,6 @@ export default function App() {
               onClick={() => {
                 setExplainChat([])
                 setExplainCtx(null)
-                setFollowupVal('')
               }}
               aria-label="Sluiten"
             >
@@ -824,24 +1128,10 @@ export default function App() {
                   </p>
                 ),
               )}
-              {explaining && <p className="explain-typing">Antwoord ophalen…</p>}
             </div>
             <div className="explain-ask">
-              <input
-                className="explain-input"
-                placeholder="Vraag verder…"
-                value={followupVal}
-                onChange={(e) => setFollowupVal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') askFollowup()
-                }}
-              />
-              <button
-                className="btn"
-                onClick={askFollowup}
-                disabled={followupVal.trim() === '' || explaining || !features.gemini}
-              >
-                Vraag
+              <button className="btn" onClick={continueInChat} disabled={!features.gemini}>
+                💬 Verder in chat
               </button>
             </div>
           </div>

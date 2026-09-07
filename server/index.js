@@ -4,7 +4,7 @@
 // Endpoints (allemaal onder /api):
 //   GET  /api/health       -> welke features beschikbaar zijn (welke keys gezet)
 //   POST /api/translate    -> Cloud Translate (batch), cache per tekst
-//   POST /api/explain      -> Gemini: fragment-uitleg, cache
+//   POST /api/chat         -> Gemini: Spaans-tutor (fragment-uitleg + vrije chat), cache op initiële uitleg
 //   POST /api/ai-translate -> Gemini: zin vertalen mét context, cache
 //   POST /api/tts          -> Cloud TTS: mp3-bytes, cache
 //   GET  /api/voices       -> Cloud TTS: Spaanse stemmen, cache
@@ -32,6 +32,9 @@ const GEMINI_MAX_TOKENS = 2048 // ruim: thinking-tokens tellen mee (te krap -> l
 const BOOK_START_WINDOW = 20 // hoeveel begin-zinnen we aan de front-matter-detectie geven
 const SEGMENT_PROMPT_VERSION = 3
 const STORY_START_PROMPT_VERSION = 2
+const PRACTICE_PROMPT_VERSION = 1
+const ADDWORD_PROMPT_VERSION = 1
+const CHAT_PROMPT_VERSION = 1
 
 const hasGoogle = () => GOOGLE_KEY.trim().length > 0
 const hasGemini = () => GEMINI_KEY.trim().length > 0
@@ -115,13 +118,24 @@ async function geminiGenerate(prompt, temperature = 0.3, maxTokens = GEMINI_MAX_
 
 // --- Prompts (server-side; client stuurt alleen de tekst) ------------------------
 
-function explainPrompt(fragment, sentence) {
+/** Framing die voor alle tutor-interacties geldt (initiële uitleg én vrije chat). */
+function chatSystemPrompt() {
   return [
-    'Je bent een Spaans-docent voor een Nederlandstalige die Spaans leert.',
+    'Je bent een vriendelijke, beknopte docent Spaans voor een Nederlandstalige die Spaans leert.',
+    'Je antwoordt altijd in het Nederlands, helder en to-the-point. Je helpt met grammatica,',
+    'woorden, uitdrukkingen, en vragen over de tekst die de leerling leest.',
+  ].join('\n')
+}
+
+/** Initiële uitleg van een geselecteerd fragment binnen een zin (cachebaar, geen gesprek). */
+function explainFragmentPrompt(fragment, sentence) {
+  return [
+    chatSystemPrompt(),
+    '',
     `Spaanse zin (context): "${sentence}"`,
     `Geselecteerd deel: "${fragment}"`,
     '',
-    'Leg het geselecteerde deel uit. Antwoord in het Nederlands, beknopt en helder,',
+    'Leg het geselecteerde deel uit. Antwoord beknopt en helder,',
     'zonder inleiding, exact in deze structuur (elk op een eigen regel):',
     '- Natuurlijk: <vloeiende Nederlandse vertaling van het geselecteerde deel>',
     '- Letterlijk: <letterlijke, woord-voor-woord vertaling>',
@@ -130,6 +144,18 @@ function explainPrompt(fragment, sentence) {
     'Als het geselecteerde deel een vaste uitdrukking/idioom is (bijv. "a veces" = "soms"),',
     'benoem dat expliciet bij Uitleg en maak duidelijk dat de letterlijke vertaling niet de',
     'werkelijke betekenis is.',
+  ].join('\n')
+}
+
+/** Framing voor een vrije chatvraag mét grounding op een fragment/zin uit de tekst. */
+function chatContextPrompt(fragment, sentence) {
+  return [
+    chatSystemPrompt(),
+    '',
+    `Spaanse zin (context): "${sentence}"`,
+    `Geselecteerd deel: "${fragment}"`,
+    '',
+    'De leerling stelt hierna een vraag over deze tekst. Gebruik de context waar relevant.',
   ].join('\n')
 }
 
@@ -146,6 +172,67 @@ function aiTranslatePrompt(prev, current, next) {
   if (prev) lines.push(`    ${prev}`)
   lines.push(`>>> ${current}`)
   if (next) lines.push(`    ${next}`)
+  return lines.join('\n')
+}
+
+function practiceSentencePrompt(word, translation, seed) {
+  return [
+    'Je bent een Spaans-docent voor een Nederlandstalige die Spaans leert.',
+    `Woord: "${word}"${translation ? ` (Nederlands: "${translation}")` : ''}`,
+    '',
+    'Bedenk één natuurlijke, leerzame Spaanse zin waarin dit woord voorkomt. Is het woord een',
+    'werkwoord, gebruik dan bewust een AFWISSELENDE vervoeging: varieer persoon (yo/tú/él.../',
+    'nosotros/ellos) en tijd (bijv. presente, pretérito, imperfecto, futuro) in plaats van steeds',
+    'dezelfde vorm — dit traint juist de werkwoordsuitgangen. Houd de zin kort en op leer-niveau',
+    '(geen ingewikkelde bijzinnen).',
+    '',
+    `Variatie-kiem: ${seed}. Gebruik die alleen om een andere variant te kiezen dan een vorige`,
+    'keer (andere persoon/tijd/zinsopbouw); noem het getal zelf niet in de zin.',
+    '',
+    'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst',
+    'eromheen, in dit formaat:',
+    '{ "sentence": "<Spaanse zin met het woord>", "translation": "<natuurlijke NL-vertaling van die zin>" }',
+  ].join('\n')
+}
+
+function addWordPrompt(text, direction) {
+  const lines = ['Je bent een vertaler Spaans-Nederlands voor een Nederlandstalige die Spaans leert.']
+  if (direction === 'nl2es') {
+    lines.push(
+      `Nederlandse tekst: "${text}"`,
+      '',
+      'Behandel deze tekst als NEDERLANDS, ook als die er ook Spaans uit zou kunnen zien. Geef het',
+      'natuurlijke Spaanse equivalent. Is het een frase van meerdere woorden, vertaal die als één',
+      'geheel (niet woord-voor-woord).',
+    )
+  } else if (direction === 'es2nl') {
+    lines.push(
+      `Spaanse tekst: "${text}"`,
+      '',
+      'Behandel deze tekst als SPAANS, ook als die er ook Nederlands uit zou kunnen zien. Vertaal',
+      'naar natuurlijk Nederlands. Is het een frase van meerdere woorden, vertaal die als één geheel',
+      '(niet woord-voor-woord).',
+    )
+  } else {
+    lines.push(
+      `Tekst: "${text}"`,
+      '',
+      'Bepaal eerst of deze tekst Nederlands of Spaans is. Is de tekst Spaans, vertaal hem naar',
+      'natuurlijk Nederlands. Is de tekst Nederlands, geef het natuurlijke Spaanse equivalent. Is',
+      'het een frase van meerdere woorden, behandel die als één geheel (niet woord-voor-woord).',
+    )
+  }
+  lines.push(
+    '',
+    'Bedenk daarnaast één korte, natuurlijke Spaanse voorbeeldzin op leer-niveau (geen ingewikkelde',
+    'bijzinnen) waarin het Spaanse woord/de Spaanse frase voorkomt.',
+    '',
+    'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst',
+    'eromheen, in dit formaat:',
+    '{ "word": "<het Spaanse woord/de Spaanse frase>", "translation": "<de Nederlandse vertaling>",',
+    '  "context": "<Spaanse voorbeeldzin met het woord>", "detected": "nl2es of es2nl" }',
+    '"word" is ALTIJD Spaans en "translation" ALTIJD Nederlands, ongeacht de invoerrichting.',
+  )
   return lines.join('\n')
 }
 
@@ -287,25 +374,33 @@ app.post('/api/translate', async (req, res) => {
   }
 })
 
-// Gemini: fragment-uitleg. Met { question } wordt het een vervolgvraag (multi-turn), ongecached.
-app.post('/api/explain', async (req, res) => {
+// Gemini: Spaans-tutor. Zonder history/question maar mét context -> initiële fragment-uitleg
+// (gecached). Anders -> vrije chatvraag (multi-turn, met context als grounding indien aanwezig),
+// ongecached.
+app.post('/api/chat', async (req, res) => {
   if (!hasGemini()) return res.status(503).json({ error: 'Geen GEMINI_KEY ingesteld.' })
-  const { sentence, fragment, history, question } = req.body ?? {}
-  if (typeof sentence !== 'string' || typeof fragment !== 'string')
-    return res.status(400).json({ error: 'Verwacht { sentence, fragment }.' })
+  const { history, question, context } = req.body ?? {}
 
-  if (typeof question === 'string' && question.trim() !== '') {
-    const contents = [{ role: 'user', parts: [{ text: explainPrompt(fragment, sentence) }] }]
-    if (Array.isArray(history)) {
-      for (const item of history) {
-        if (!item || (item.role !== 'user' && item.role !== 'model') || typeof item.text !== 'string') continue
-        contents.push({ role: item.role === 'user' ? 'user' : 'model', parts: [{ text: String(item.text) }] })
-      }
-    }
-    contents.push({ role: 'user', parts: [{ text: question }] })
+  const ctx =
+    context && typeof context === 'object' &&
+    typeof context.fragment === 'string' && typeof context.sentence === 'string'
+      ? { fragment: context.fragment, sentence: context.sentence }
+      : null
+  const hasHistory = Array.isArray(history) && history.length > 0
+  const hasQuestion = typeof question === 'string' && question.trim() !== ''
+
+  if (!ctx && !hasQuestion)
+    return res.status(400).json({ error: 'Verwacht { context } voor een uitleg, of { question } voor een chatvraag.' })
+
+  // Initiële uitleg: context aanwezig, nog geen gesprek.
+  if (ctx && !hasHistory && !hasQuestion) {
+    const key = `chat|${GEMINI_MODEL}|${CHAT_PROMPT_VERSION}|${ctx.sentence}|${ctx.fragment}`
+    const hit = await readCacheText('chat', key)
+    if (hit != null) return res.json({ text: hit })
 
     try {
-      const text = await geminiChat(contents, 0.3, 4096)
+      const text = await geminiGenerate(explainFragmentPrompt(ctx.fragment, ctx.sentence))
+      await writeCacheText('chat', key, text)
       res.json({ text })
     } catch (err) {
       res.status(502).json({ error: String(err?.message || err) })
@@ -313,13 +408,22 @@ app.post('/api/explain', async (req, res) => {
     return
   }
 
-  const key = `explain|${GEMINI_MODEL}|${sentence}|${fragment}`
-  const hit = await readCacheText('explain', key)
-  if (hit != null) return res.json({ text: hit })
+  // Vrije chatvraag: heeft altijd een question nodig.
+  if (!hasQuestion)
+    return res.status(400).json({ error: 'Verwacht { question } voor een chatvraag.' })
+
+  const framing = ctx ? chatContextPrompt(ctx.fragment, ctx.sentence) : chatSystemPrompt()
+  const contents = [{ role: 'user', parts: [{ text: framing }] }]
+  if (Array.isArray(history)) {
+    for (const item of history) {
+      if (!item || (item.role !== 'user' && item.role !== 'model') || typeof item.text !== 'string') continue
+      contents.push({ role: item.role, parts: [{ text: String(item.text) }] })
+    }
+  }
+  contents.push({ role: 'user', parts: [{ text: question }] })
 
   try {
-    const text = await geminiGenerate(explainPrompt(fragment, sentence))
-    await writeCacheText('explain', key, text)
+    const text = await geminiChat(contents, 0.3, 4096)
     res.json({ text })
   } catch (err) {
     res.status(502).json({ error: String(err?.message || err) })
@@ -342,6 +446,100 @@ app.post('/api/ai-translate', async (req, res) => {
     const text = raw.replace(/^[\s"'«»]+|[\s"'«»]+$/g, '').trim()
     await writeCacheText('aitranslate', key, text)
     res.json({ text })
+  } catch (err) {
+    res.status(502).json({ error: String(err?.message || err) })
+  }
+})
+
+// Gemini: oefenzin voor de oefenmodus (variërende persoon/tijd om uitgangen te trainen).
+app.post('/api/practice-sentence', async (req, res) => {
+  if (!hasGemini()) return res.status(503).json({ error: 'Geen GEMINI_KEY ingesteld.' })
+  const { word, translation = '', seed = '' } = req.body ?? {}
+  if (typeof word !== 'string' || word.trim() === '')
+    return res.status(400).json({ error: 'Verwacht { word, translation?, seed? }.' })
+  const seedKey = String(seed)
+
+  const key = `practice|${GEMINI_MODEL}|${PRACTICE_PROMPT_VERSION}|${word}|${translation}|${seedKey}`
+  const hit = await readCacheText('practice', key)
+  if (hit != null) return res.json(JSON.parse(hit))
+
+  try {
+    // Iets hogere temperature (variatie in persoon/tijd) + ruim budget: thinking-tokens tellen mee.
+    const raw = await geminiGenerate(practiceSentencePrompt(word, translation, seedKey), 0.8, 4096)
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+    let parsed
+    try {
+      parsed = JSON.parse(cleaned)
+    } catch (parseErr) {
+      console.error('[lal] /api/practice-sentence: ongeldige JSON van Gemini:', parseErr, '\nraw:', raw.slice(0, 500))
+      return res.status(502).json({ error: 'Gemini gaf geen geldig JSON-object terug.' })
+    }
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof parsed.sentence !== 'string' ||
+      typeof parsed.translation !== 'string' ||
+      parsed.sentence.trim() === '' ||
+      parsed.translation.trim() === ''
+    ) {
+      console.error('[lal] /api/practice-sentence: geen { sentence, translation } van Gemini:', raw.slice(0, 500))
+      return res.status(502).json({ error: 'Gemini gaf geen { sentence, translation } terug.' })
+    }
+    const result = { sentence: parsed.sentence.trim(), translation: parsed.translation.trim() }
+    await writeCacheText('practice', key, JSON.stringify(result))
+    res.json(result)
+  } catch (err) {
+    res.status(502).json({ error: String(err?.message || err) })
+  }
+})
+
+// Gemini: handmatig woord/frase toevoegen -> AI-vertaling + voorbeeldzin (met richting-detectie).
+app.post('/api/add-word', async (req, res) => {
+  if (!hasGemini()) return res.status(503).json({ error: 'Geen GEMINI_KEY ingesteld.' })
+  const { text, direction = 'auto' } = req.body ?? {}
+  if (typeof text !== 'string' || text.trim() === '')
+    return res.status(400).json({ error: 'Verwacht { text: string, direction? }.' })
+  const dir = direction === 'nl2es' || direction === 'es2nl' ? direction : 'auto'
+  const trimmed = text.trim()
+  const normText = trimmed.toLowerCase()
+
+  const key = `addword|${GEMINI_MODEL}|${ADDWORD_PROMPT_VERSION}|${dir}|${normText}`
+  const hit = await readCacheText('addword', key)
+  if (hit != null) return res.json(JSON.parse(hit))
+
+  try {
+    // Ruim budget: thinking-tokens tellen mee.
+    const raw = await geminiGenerate(addWordPrompt(trimmed, dir), 0.4, 4096)
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+    let parsed
+    try {
+      parsed = JSON.parse(cleaned)
+    } catch (parseErr) {
+      console.error('[lal] /api/add-word: ongeldige JSON van Gemini:', parseErr, '\nraw:', raw.slice(0, 500))
+      return res.status(502).json({ error: 'Gemini gaf geen geldig JSON-object terug.' })
+    }
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof parsed.word !== 'string' ||
+      typeof parsed.translation !== 'string' ||
+      typeof parsed.context !== 'string' ||
+      parsed.word.trim() === '' ||
+      parsed.translation.trim() === '' ||
+      parsed.context.trim() === '' ||
+      (parsed.detected !== 'nl2es' && parsed.detected !== 'es2nl')
+    ) {
+      console.error('[lal] /api/add-word: geen { word, translation, context, detected } van Gemini:', raw.slice(0, 500))
+      return res.status(502).json({ error: 'Gemini gaf geen { word, translation, context, detected } terug.' })
+    }
+    const result = {
+      word: parsed.word.trim(),
+      translation: parsed.translation.trim(),
+      context: parsed.context.trim(),
+      detected: parsed.detected,
+    }
+    await writeCacheText('addword', key, JSON.stringify(result))
+    res.json(result)
   } catch (err) {
     res.status(502).json({ error: String(err?.message || err) })
   }
