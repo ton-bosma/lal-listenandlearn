@@ -120,6 +120,10 @@ Spaans.
 ### Lezen & boeken
 - **Taal als instelling (generiek maken):** bron-/doeltaal instelbaar zodat andere
   talencombinaties werken (nu hard Spaans → Nederlands).
+- **Spaans-specifieke onderdelen inventariseren + beslissen:** her en der sluipen
+  Spaans-specifieke dingen de app in (variant LatAm/Spanje, personenset, voornaamwoord-labels,
+  stem-default, clitics). Op een rij zetten wat écht Spaans-gebonden is en wat generiek moet, en
+  per onderdeel beslissen — als voorwerk voor "taal als instelling".
 - **Instelling "achtergelaten stand onthouden"** i.p.v. altijd kaal terug.
 - **Meerdere boeken** bewaren + kiezen (nu één "current"; voortgang dan per boek).
 - **"Terug naar demotekst"** als expliciete knop.

@@ -17,14 +17,20 @@ import {
   type Book,
   type Chapter,
   type SegmentMode,
+  type SpanishVariant,
+  type VerbSettings,
   getAiTranslateMode,
   getSegmentMode,
   loadAudioMuted,
   loadBook,
   loadMicMuted,
+  loadSpanishVariant,
+  loadVerbSettings,
   saveAudioMuted,
   saveBook,
   saveMicMuted,
+  saveSpanishVariant,
+  saveVerbSettings,
   setAiTranslateMode,
   setSegmentMode,
 } from './lib/storage'
@@ -43,6 +49,8 @@ import { type VocabWord, addVocab, listVocab, removeVocab, updateVocab } from '.
 import { type WordSuggestion, fetchWordSuggestion } from './lib/addword'
 import { MAX_BOX, loadSrs } from './lib/practice'
 import PracticePanel from './PracticePanel'
+import VerbPanel from './VerbPanel'
+import VerbFocusPanel from './VerbFocusPanel'
 import ChatPanel from './ChatPanel'
 
 // De drie zichtbaarheidsniveaus van de progressieve hulp (zie docs/SPEC.md):
@@ -58,9 +66,20 @@ type Reveal = 'none' | 'spanish' | 'dutch'
 //  'flashcard'   -> oefening woord-flashcard (Spaans → Nederlands)
 //  'flashcardNl' -> oefening woord-flashcard (Nederlands → Spaans)
 //  'aisentence'  -> oefening AI-voorbeeldzin
+//  'verbs'       -> oefening werkwoorden (conjugatie, presente)
 //  'chat'        -> full-screen chat (vrije chat vanuit het menu, of vervolg vanuit de uitleg)
 // Terug = één stap omhoog: oefening/onderhoud → menu → lezen; chat → waar je vandaan kwam.
-type Screen = 'read' | 'menu' | 'vocab' | 'flashcard' | 'flashcardNl' | 'aisentence' | 'chat'
+type Screen =
+  | 'read'
+  | 'menu'
+  | 'vocab'
+  | 'flashcard'
+  | 'flashcardNl'
+  | 'aisentence'
+  | 'verbs'
+  | 'verbPicker'
+  | 'verbFocus'
+  | 'chat'
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Onbekende fout.'
@@ -133,6 +152,9 @@ export default function App() {
   const [editWordKey, setEditWordKey] = useState<string | null>(null)
   const [editWordVal, setEditWordVal] = useState('')
 
+  // Werkwoorden-oefening voorbereiden: backfill van ontbrekende woordsoorten loopt even (server).
+  const [verbPrep, setVerbPrep] = useState(false)
+
   // Onderhoudscherm: live filter over de lijst (substring op woord/vertaling/context).
   const [vocabFilter, setVocabFilter] = useState('')
   // SRS-stand voor de voortgang-indicator: één keer inlezen bij het (her)openen van een scherm
@@ -154,6 +176,12 @@ export default function App() {
 
   // Instellingen-paneel (stem/snelheid/boek/hoofdstuk) inklapbaar houden.
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [verbSettings, setVerbSettings] = useState<VerbSettings>(() => loadVerbSettings())
+  const [spanishVariant, setSpanishVariant] = useState<SpanishVariant>(() => loadSpanishVariant())
+  // Focus-oefening ("rammen"): geselecteerde werkwoord-keys + waar we naar terugkeren.
+  const [focusKeys, setFocusKeys] = useState<string[]>([])
+  const [focusReturn, setFocusReturn] = useState<Screen>('menu')
+  const [pickerSelected, setPickerSelected] = useState<Set<string>>(() => new Set())
 
   const shownCloudVoices = curateCloudVoices(cloudVoices)
 
@@ -260,6 +288,18 @@ export default function App() {
   function setMicOn(on: boolean) {
     setMicMuted(!on)
     saveMicMuted(!on)
+  }
+
+  // Werkwoorden-oefening-settings bijwerken: opslaan (klemt drempels) en de geklemde stand terug
+  // in state zetten, zodat de UI en de oefening dezelfde, geldige waarden gebruiken.
+  function updateVerbSettings(patch: Partial<VerbSettings>) {
+    saveVerbSettings({ ...verbSettings, ...patch })
+    setVerbSettings(loadVerbSettings())
+  }
+
+  function updateSpanishVariant(v: SpanishVariant) {
+    saveSpanishVariant(v)
+    setSpanishVariant(loadSpanishVariant())
   }
 
   // Handmatig voorlezen ("Luister"). Bij geluid uit is de knop verborgen; guard voor de zekerheid.
@@ -457,6 +497,43 @@ export default function App() {
     setChatTitle(`Uitleg: "${explainCtx.fragment}"`)
     setChatReturnTo('read')
     setScreen('chat')
+  }
+
+  // Ontbrekende woordsoorten laten classificeren (server) en de vocab herladen, zodat de
+  // werkwoorden-schermen kunnen filteren op type. Zonder onbekende types: niets te doen.
+  async function ensureTypes() {
+    if (!vocab.some((w) => !w.type)) return
+    setVerbPrep(true)
+    try {
+      await fetch('/api/vocab/enrich-missing', { method: 'POST' })
+      const fresh = await listVocab()
+      setVocab(fresh)
+    } catch {
+      // stil: backfill is best-effort — met de reeds bekende types gaan we alsnog door
+    } finally {
+      setVerbPrep(false)
+    }
+  }
+
+  // Werkwoorden oefenen (SRS-mix) openen.
+  async function openVerbs() {
+    await ensureTypes()
+    setScreen('verbs')
+  }
+
+  // Focus-kiezer openen: eerst types zeker stellen, dan met een lege selectie naar de kiezer.
+  async function openVerbPicker() {
+    await ensureTypes()
+    setPickerSelected(new Set())
+    setScreen('verbPicker')
+  }
+
+  // Focus-oefening ("rammen") starten voor de gegeven werkwoord-keys; onthoud waar we terugkeren.
+  function startVerbFocus(keys: string[], ret: Screen) {
+    if (keys.length === 0) return
+    setFocusKeys(keys)
+    setFocusReturn(ret)
+    setScreen('verbFocus')
   }
 
   // Vrije chat vanuit het keuzescherm: verse thread, geen fragment-context.
@@ -708,6 +785,52 @@ export default function App() {
                   {vocab.length === 0 && ' (nog geen woorden)'}
                 </span>
               </button>
+              <button
+                className="btn practice-choice"
+                onClick={openVerbs}
+                disabled={vocab.length === 0 || !features.gemini || verbPrep}
+                title={
+                  vocab.length === 0
+                    ? 'Nog geen woorden om te oefenen'
+                    : !features.gemini
+                      ? 'Vereist een Gemini-key op de server'
+                      : undefined
+                }
+              >
+                <span className="practice-choice-title">
+                  <span className="material-icons">repeat</span> Werkwoorden oefenen
+                </span>
+                <span className="practice-choice-desc">
+                  {verbPrep
+                    ? 'Werkwoorden voorbereiden…'
+                    : 'Vervoeg je werkwoorden (presente) — van rijtjes tot vrije zinnen.'}
+                  {vocab.length === 0 && ' (nog geen woorden)'}
+                  {vocab.length > 0 && !features.gemini && ' (niet beschikbaar — geen Gemini-key)'}
+                </span>
+              </button>
+              <button
+                className="btn practice-choice"
+                onClick={openVerbPicker}
+                disabled={vocab.length === 0 || !features.gemini || verbPrep}
+                title={
+                  vocab.length === 0
+                    ? 'Nog geen woorden om te oefenen'
+                    : !features.gemini
+                      ? 'Vereist een Gemini-key op de server'
+                      : undefined
+                }
+              >
+                <span className="practice-choice-title">
+                  <span className="material-icons">gavel</span> Werkwoord rammen
+                </span>
+                <span className="practice-choice-desc">
+                  {verbPrep
+                    ? 'Werkwoorden voorbereiden…'
+                    : 'Kies één of meer werkwoorden en dril alle presente-vormen (geen SRS).'}
+                  {vocab.length === 0 && ' (nog geen woorden)'}
+                  {vocab.length > 0 && !features.gemini && ' (niet beschikbaar — geen Gemini-key)'}
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -938,6 +1061,98 @@ export default function App() {
         </div>
       )}
 
+      {screen === 'verbs' && (
+        <div className="screen" aria-label="Werkwoorden oefenen">
+          <div className="screen-inner">
+            <VerbPanel
+              vocab={vocab}
+              onBack={() => setScreen('menu')}
+              settings={verbSettings}
+              variant={spanishVariant}
+              onFocusVerb={(key) => startVerbFocus([key], 'verbs')}
+            />
+          </div>
+        </div>
+      )}
+
+      {screen === 'verbPicker' && (
+        <div className="screen" aria-label="Werkwoord kiezen">
+          <div className="screen-inner">
+            <div className="screen-head">
+              <button
+                className="btn practice-back"
+                onClick={() => setScreen('menu')}
+                aria-label="Terug"
+                title="Terug"
+              >
+                <span className="material-icons" aria-hidden="true">
+                  arrow_back
+                </span>
+              </button>
+              <span className="practice-title">
+                <span className="material-icons">gavel</span> Kies werkwoorden om te rammen
+              </span>
+            </div>
+            {(() => {
+              const verbs = vocab.filter((w) => w.type === 'werkwoord')
+              if (verbs.length === 0)
+                return <p className="practice-empty">Nog geen werkwoorden in je lijst.</p>
+              return (
+                <>
+                  <ul className="verb-pick-list">
+                    {verbs.map((w) => (
+                      <li key={w.key}>
+                        <label className="verb-pick">
+                          <input
+                            type="checkbox"
+                            checked={pickerSelected.has(w.key)}
+                            onChange={() =>
+                              setPickerSelected((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(w.key)) next.delete(w.key)
+                                else next.add(w.key)
+                                return next
+                              })
+                            }
+                          />
+                          <span className="verb-pick-word" lang="es">
+                            {w.infinitive || w.word}
+                          </span>
+                          <span className="verb-pick-tr">{w.translation}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="practice-summary-actions">
+                    <button
+                      className="btn help"
+                      disabled={pickerSelected.size === 0}
+                      onClick={() => startVerbFocus([...pickerSelected], 'menu')}
+                      title="Start rammen"
+                    >
+                      <span className="material-icons">gavel</span> {pickerSelected.size}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {screen === 'verbFocus' && (
+        <div className="screen" aria-label="Werkwoord rammen">
+          <div className="screen-inner">
+            <VerbFocusPanel
+              vocab={vocab}
+              verbKeys={focusKeys}
+              variant={spanishVariant}
+              onBack={() => setScreen(focusReturn)}
+            />
+          </div>
+        </div>
+      )}
+
       {screen === 'chat' && (
         <div className="screen" aria-label="Chat">
           <div className="screen-inner">
@@ -1058,6 +1273,61 @@ export default function App() {
             >
               <span className="material-icons" aria-hidden="true">
                 {micMuted ? 'mic_off' : 'mic'}
+              </span>
+            </button>
+          </div>
+
+          <label className="panel-field">
+            Spaanse variant
+            <select
+              value={spanishVariant}
+              onChange={(e) => updateSpanishVariant(e.target.value as SpanishVariant)}
+            >
+              <option value="latam">Latijns-Amerika</option>
+              <option value="spain">Spanje</option>
+            </select>
+          </label>
+
+          <label className="panel-field">
+            Werkwoorden: tier 2 vanaf box
+            <input
+              type="number"
+              min={1}
+              max={5}
+              value={verbSettings.tier2Min}
+              onChange={(e) => updateVerbSettings({ tier2Min: Number(e.target.value) })}
+            />
+          </label>
+
+          <label className="panel-field">
+            Werkwoorden: tier 3 vanaf box
+            <input
+              type="number"
+              min={1}
+              max={5}
+              value={verbSettings.tier3Min}
+              onChange={(e) => updateVerbSettings({ tier3Min: Number(e.target.value) })}
+            />
+          </label>
+
+          <div className="panel-field panel-toggle-row">
+            <span>
+              Werkwoorden: tiers door elkaar
+              <span className="toggle-hint">Uit = oplopend (tier 1 eerst); aan = willekeurig gemengd.</span>
+            </span>
+            <button
+              className="sound-toggle"
+              onClick={() => updateVerbSettings({ shuffleAll: !verbSettings.shuffleAll })}
+              aria-pressed={verbSettings.shuffleAll}
+              aria-label={verbSettings.shuffleAll ? 'Tiers oplopend zetten' : 'Tiers door elkaar zetten'}
+              title={
+                verbSettings.shuffleAll
+                  ? 'Tiers door elkaar — klik voor oplopend'
+                  : 'Tiers oplopend — klik voor door elkaar'
+              }
+            >
+              <span className="material-icons" aria-hidden="true">
+                {verbSettings.shuffleAll ? 'shuffle' : 'sort'}
               </span>
             </button>
           </div>

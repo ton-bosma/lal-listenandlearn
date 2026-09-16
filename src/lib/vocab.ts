@@ -13,6 +13,10 @@ export interface VocabWord {
   context: string
   /** ISO-datum van toevoegen (door de server gezet). */
   addedAt?: string
+  /** Woordsoort (optioneel; server vult aan indien niet meegegeven). */
+  type?: 'werkwoord' | 'zelfstandig' | 'bijvoeglijk' | 'overig'
+  /** Infinitief bij werkwoorden (optioneel; server vult aan indien niet meegegeven). */
+  infinitive?: string
 }
 
 function parseList(json: unknown): VocabWord[] {

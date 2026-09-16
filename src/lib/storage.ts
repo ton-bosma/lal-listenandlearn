@@ -9,6 +9,8 @@ const AI_TRANSLATE_KEY = 'spaanleren.aiTranslateEnabled.v1'
 const MUTED_KEY = 'spaanleren.muted.v1'
 const MIC_MUTED_KEY = 'spaanleren.micMuted.v1'
 const SEGMENT_MODE_KEY = 'spaanleren.segmentMode.v1'
+const VERB_SETTINGS_KEY = 'spaanleren.verbSettings.v1'
+const SPANISH_VARIANT_KEY = 'spaanleren.spanishVariant.v1'
 
 interface Progress {
   /** Index van de huidige zin (deterministische modus). */
@@ -252,6 +254,70 @@ export function loadMicMuted(): boolean {
 export function saveMicMuted(on: boolean): void {
   try {
     localStorage.setItem(MIC_MUTED_KEY, on ? '1' : '0')
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Settings voor de werkwoorden-oefening: vanaf welke conj-box tier 2/3 begint, en of de tiers
+ * echt door elkaar komen (i.p.v. oplopend tier 1 → 3). Eén object onder een eigen sleutel.
+ */
+export interface VerbSettings {
+  /** Conj-box vanaf waar tier 2 (cloze) begint. 1..5. */
+  tier2Min: number
+  /** Conj-box vanaf waar tier 3 (vraag-antwoord) begint. 1..5. */
+  tier3Min: number
+  /** true = wachtrij echt husselen over alle tiers; false = oplopend op box (tier 1 eerst). */
+  shuffleAll: boolean
+}
+
+export const DEFAULT_VERB_SETTINGS: VerbSettings = { tier2Min: 2, tier3Min: 4, shuffleAll: false }
+
+/** Klemt de drempels netjes: 1 ≤ tier2Min ≤ tier3Min ≤ 5. */
+function clampVerbSettings(s: VerbSettings): VerbSettings {
+  const clamp = (n: number) => Math.min(5, Math.max(1, Math.round(Number.isFinite(n) ? n : 1)))
+  const tier2Min = clamp(s.tier2Min)
+  const tier3Min = Math.max(tier2Min, clamp(s.tier3Min))
+  return { tier2Min, tier3Min, shuffleAll: !!s.shuffleAll }
+}
+
+export function loadVerbSettings(): VerbSettings {
+  try {
+    const raw = localStorage.getItem(VERB_SETTINGS_KEY)
+    if (!raw) return { ...DEFAULT_VERB_SETTINGS }
+    return clampVerbSettings({ ...DEFAULT_VERB_SETTINGS, ...JSON.parse(raw) })
+  } catch {
+    return { ...DEFAULT_VERB_SETTINGS }
+  }
+}
+
+export function saveVerbSettings(s: VerbSettings): void {
+  try {
+    localStorage.setItem(VERB_SETTINGS_KEY, JSON.stringify(clampVerbSettings(s)))
+  } catch {
+    // best-effort
+  }
+}
+
+/** Spaanse variant die de personenset/vervoegingen bij de werkwoord-oefening bepaalt. */
+export type SpanishVariant = 'latam' | 'spain'
+
+export const DEFAULT_SPANISH_VARIANT: SpanishVariant = 'latam'
+
+/** Leest de variant; valideert strikt op 'latam'|'spain', anders default. */
+export function loadSpanishVariant(): SpanishVariant {
+  try {
+    const raw = localStorage.getItem(SPANISH_VARIANT_KEY)
+    return raw === 'latam' || raw === 'spain' ? raw : DEFAULT_SPANISH_VARIANT
+  } catch {
+    return DEFAULT_SPANISH_VARIANT
+  }
+}
+
+export function saveSpanishVariant(v: SpanishVariant): void {
+  try {
+    localStorage.setItem(SPANISH_VARIANT_KEY, v === 'spain' ? 'spain' : 'latam')
   } catch {
     // best-effort
   }

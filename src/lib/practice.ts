@@ -17,15 +17,22 @@ export interface SrsEntry {
 export type SrsState = Record<string, SrsEntry>
 
 /** Oefen-richting van de woord-flashcard. */
-export type PracticeDir = 'es2nl' | 'nl2es'
+export type PracticeDir = 'es2nl' | 'nl2es' | 'conj'
 
 /**
  * SRS-sleutel voor een woord in een gegeven richting. ES→NL (en de AI-zin) gebruiken de kale
- * `wordKey` (backward compatible met bestaande voortgang); NL→ES krijgt een eigen suffix zodat het
- * los telt.
+ * `wordKey` (backward compatible met bestaande voortgang); NL→ES en conjugatie krijgen elk een
+ * eigen suffix zodat ze los tellen.
  */
 export function srsKeyFor(wordKey: string, dir: PracticeDir = 'es2nl'): string {
-  return dir === 'nl2es' ? `${wordKey}::nl2es` : wordKey
+  switch (dir) {
+    case 'nl2es':
+      return `${wordKey}::nl2es`
+    case 'conj':
+      return `${wordKey}::conj`
+    default:
+      return wordKey
+  }
 }
 
 /** Leest de SRS-stand uit localStorage; bij ontbreken/corrupte data een lege stand. */

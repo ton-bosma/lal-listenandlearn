@@ -33,8 +33,10 @@ const BOOK_START_WINDOW = 20 // hoeveel begin-zinnen we aan de front-matter-dete
 const SEGMENT_PROMPT_VERSION = 3
 const STORY_START_PROMPT_VERSION = 2
 const PRACTICE_PROMPT_VERSION = 1
-const ADDWORD_PROMPT_VERSION = 1
+const ADDWORD_PROMPT_VERSION = 2
 const CHAT_PROMPT_VERSION = 1
+const CLASSIFY_PROMPT_VERSION = 1
+const CONJ_PROMPT_VERSION = 3
 
 const hasGoogle = () => GOOGLE_KEY.trim().length > 0
 const hasGemini = () => GEMINI_KEY.trim().length > 0
@@ -227,13 +229,175 @@ function addWordPrompt(text, direction) {
     'Bedenk daarnaast één korte, natuurlijke Spaanse voorbeeldzin op leer-niveau (geen ingewikkelde',
     'bijzinnen) waarin het Spaanse woord/de Spaanse frase voorkomt.',
     '',
+    'Bepaal ook de woordsoort van het Spaanse woord ("type"): "werkwoord", "zelfstandig"',
+    '(zelfstandig naamwoord), "bijvoeglijk" (bijvoeglijk naamwoord) of "overig" (al het andere,',
+    'zoals bijwoorden, voorzetsels, frases). Is het een werkwoord, geef dan bij "infinitive" de',
+    'Spaanse infinitief (bijv. "hablar"); is het geen werkwoord, geef dan "" (lege string).',
+    '',
     'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst',
     'eromheen, in dit formaat:',
     '{ "word": "<het Spaanse woord/de Spaanse frase>", "translation": "<de Nederlandse vertaling>",',
-    '  "context": "<Spaanse voorbeeldzin met het woord>", "detected": "nl2es of es2nl" }',
+    '  "context": "<Spaanse voorbeeldzin met het woord>", "detected": "nl2es of es2nl",',
+    '  "type": "werkwoord|zelfstandig|bijvoeglijk|overig", "infinitive": "<Spaanse infinitief of \\"\\">" }',
     '"word" is ALTIJD Spaans en "translation" ALTIJD Nederlands, ongeacht de invoerrichting.',
   )
   return lines.join('\n')
+}
+
+function classifyPrompt(word, context) {
+  return [
+    'Je bent een Spaans-taalkundige. Bepaal de woordsoort van het onderstaande Spaanse woord.',
+    `Spaans woord: "${word}"`,
+    context ? `Bronzin (context): "${context}"` : 'Er is geen bronzin meegegeven.',
+    '',
+    'Kies voor "type" precies één van: "werkwoord", "zelfstandig" (zelfstandig naamwoord),',
+    '"bijvoeglijk" (bijvoeglijk naamwoord) of "overig" (al het andere: bijwoorden, voorzetsels,',
+    'lidwoorden, frases, enz.). Gebruik de bronzin als hulp bij twijfel.',
+    'Is het een werkwoord (ook een vervoegde vorm), geef dan bij "infinitive" de Spaanse infinitief',
+    '(bijv. "hablar"). Is het geen werkwoord, geef dan "" (lege string) bij "infinitive".',
+    '',
+    'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst',
+    'eromheen, in dit formaat:',
+    '{ "type": "werkwoord|zelfstandig|bijvoeglijk|overig", "infinitive": "<Spaanse infinitief of \\"\\">" }',
+  ].join('\n')
+}
+
+const VALID_WORD_TYPES = ['werkwoord', 'zelfstandig', 'bijvoeglijk', 'overig']
+
+/** Bepaalt woordsoort + (bij werkwoord) infinitief via Gemini. Gecachet. Veilige default bij fout. */
+async function classifyWord(word, context = '') {
+  const normWord = String(word).trim().toLowerCase()
+  const key = `classify|${GEMINI_MODEL}|${CLASSIFY_PROMPT_VERSION}|${normWord}`
+  const hit = await readCacheText('classify', key)
+  if (hit != null) {
+    try {
+      return JSON.parse(hit)
+    } catch {
+      // corrupte cache -> opnieuw bepalen
+    }
+  }
+  try {
+    const raw = await geminiGenerate(classifyPrompt(String(word).trim(), String(context).trim()), 0.2, 2048)
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+    const parsed = JSON.parse(cleaned)
+    const type = VALID_WORD_TYPES.includes(parsed?.type) ? parsed.type : 'overig'
+    const infinitive = type === 'werkwoord' && typeof parsed?.infinitive === 'string' ? parsed.infinitive.trim() : ''
+    const result = { type, infinitive }
+    await writeCacheText('classify', key, JSON.stringify(result))
+    return result
+  } catch (err) {
+    console.error('[lal] classifyWord: kon woord niet classificeren:', String(err?.message || err))
+    return { type: 'overig', infinitive: '' }
+  }
+}
+
+// De personen (presente). De keuze wordt deterministisch geroteerd (zie pickPersonIndex),
+// niet aan de AI overgelaten — anders valt het model steeds op "tú" terug.
+// Variant Spanje = 6 personen (incl. vosotros); LatAm = dezelfde volgorde zonder vosotros (5).
+const DRILL_PERSONS_SPAIN = [
+  { nl: 'ik', es: 'yo' },
+  { nl: 'jij', es: 'tú' },
+  { nl: 'hij/zij', es: 'él/ella' },
+  { nl: 'wij', es: 'nosotros' },
+  { nl: 'jullie', es: 'vosotros' },
+  { nl: 'zij', es: 'ellos/ellas' },
+]
+const DRILL_PERSONS_LATAM = [
+  { nl: 'ik', es: 'yo' },
+  { nl: 'jij', es: 'tú' },
+  { nl: 'hij/zij', es: 'él/ella' },
+  { nl: 'wij', es: 'nosotros' },
+  { nl: 'zij', es: 'ellos/ellas' },
+]
+
+/** Kies de personenset op basis van variant. Default 'latam'. */
+function drillPersons(variant) {
+  return variant === 'spain' ? DRILL_PERSONS_SPAIN : DRILL_PERSONS_LATAM
+}
+
+/** Deterministische persoonskeuze uit seed + infinitief (FNV-1a), zodat werkwoorden binnen één
+ *  ronde verschillende personen krijgen en een werkwoord over rondes heen roteert.
+ *  Moduleert over de lengte van de meegegeven personenset. */
+function pickPersonIndex(seed, infinitive, persons) {
+  const s = `${seed}|${infinitive}`
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0) % persons.length
+}
+
+function conjugationDrillPrompt(infinitive, tier, tense, seed, person) {
+  const lines = [
+    'Je bent een Spaans-docent voor een Nederlandstalige die Spaans leert en werkwoordsvervoegingen',
+    'oefent.',
+    `Werkwoord (infinitief): "${infinitive}"`,
+    `Tijd: ${tense} — gebruik UITSLUITEND de PRESENTE (tegenwoordige tijd). Geen andere tijden.`,
+    'Gebruik correcte Spaanse vervoegingen en natuurlijke zinnen.',
+    '',
+    `Variatie-kiem: ${seed}. Gebruik die alleen om een andere variant (andere persoon/zinsopbouw)`,
+    'te kiezen dan een vorige keer; noem het getal zelf niet in de uitvoer.',
+    '',
+  ]
+  if (tier === 1) {
+    lines.push(
+      `Niveau 1: geef de presente-vorm voor DEZE persoon: "${person.nl}" (Spaans: ${person.es}).`,
+      `Vervoeg dus voor ${person.es}. Gebruik exact "${person.nl}" als persoonslabel.`,
+      '',
+      'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst eromheen:',
+      `{ "tier": 1, "person": "${person.nl}", "answer": "<correcte presente-vorm voor ${person.es}>" }`,
+    )
+  } else if (tier === 2) {
+    lines.push(
+      `Niveau 2: bedenk één natuurlijke Spaanse zin in de presente met als onderwerp ${person.es}`,
+      `("${person.nl}"), waarin dit werkwoord voor die persoon voorkomt.`,
+      'Vervang in die zin de doelvorm van het werkwoord door de placeholder ___ (precies drie',
+      'underscores). De rest van de zin blijft volledig.',
+      '',
+      'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst eromheen:',
+      '{ "tier": 2, "sentence": "<Spaanse presente-zin met ___ op de plek van het werkwoord>",',
+      '  "blankAnswer": "<de correcte vorm die in ___ hoort>",',
+      '  "translation": "<natuurlijke NL-vertaling van de volledige zin>" }',
+    )
+  } else {
+    lines.push(
+      'Niveau 3: stel een Nederlandse vraag die de leerling uitlokt dit werkwoord in de presente te',
+      'gebruiken in een Spaans antwoord.',
+      '',
+      'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst eromheen:',
+      '{ "tier": 3, "questionNl": "<Nederlandse vraag>",',
+      '  "expectedForms": ["<acceptabele correcte presente-vorm(en) van dit werkwoord>"],',
+      '  "modelAnswer": "<voorbeeld Spaans antwoord in de presente>",',
+      '  "translation": "<NL-vertaling van modelAnswer>" }',
+    )
+  }
+  return lines.join('\n')
+}
+
+// Rijenset (persoonslabels) voor de vervoegingstabel, variant-afhankelijk.
+// Spanje = 6 rijen (incl. vosotros); LatAm = 5 rijen (zonder vosotros).
+function tableRowLabels(variant) {
+  return variant === 'spain'
+    ? ['yo', 'tú', 'él/ella/usted', 'nosotros', 'vosotros', 'ellos/ellas/ustedes']
+    : ['yo', 'tú', 'él/ella/usted', 'nosotros', 'ellos/ellas/ustedes']
+}
+
+function conjugationTablePrompt(infinitive, tense, variant) {
+  const labels = tableRowLabels(variant)
+  const quoted = labels.map((l) => `"${l}"`).join(', ')
+  return [
+    'Je bent een Spaans-docent voor een Nederlandstalige die Spaans leert. Geef de volledige',
+    'vervoegingstabel van één werkwoord.',
+    `Werkwoord (infinitief): "${infinitive}"`,
+    `Tijd: ${tense} — gebruik UITSLUITEND de PRESENTE (tegenwoordige tijd). Geen andere tijden.`,
+    `Gebruik correcte Spaanse vervoegingen. Geef exact deze ${labels.length} personen, in exact deze`,
+    `volgorde en met exact deze persoonslabels: ${quoted}.`,
+    '',
+    'Geef UITSLUITEND een geldig JSON-object terug, zonder codeblok-fences en zonder tekst eromheen:',
+    '{ "tense": "presente", "forms": [',
+    labels.map((l) => `  { "person": "${l}", "form": "<correcte presente-vorm>" }`).join(',\n') + ' ] }',
+  ].join('\n')
 }
 
 function bookStartPrompt(window) {
@@ -493,6 +657,112 @@ app.post('/api/practice-sentence', async (req, res) => {
   }
 })
 
+// Gemini: conjugatie-drill-item voor de vervoegingsoefening (presente), per tier verschillende shape.
+app.post('/api/conjugation-drill', async (req, res) => {
+  if (!hasGemini()) return res.status(503).json({ error: 'Geen GEMINI_KEY ingesteld.' })
+  const { infinitive, tier, tense = 'presente', seed = '', variant = 'latam' } = req.body ?? {}
+  if (typeof infinitive !== 'string' || infinitive.trim() === '')
+    return res.status(400).json({ error: 'Verwacht { infinitive, tier, tense?, seed?, variant? }.' })
+  const tierNum = Number(tier)
+  if (![1, 2, 3].includes(tierNum))
+    return res.status(400).json({ error: 'tier moet 1, 2 of 3 zijn.' })
+  const inf = infinitive.trim()
+  const tenseKey = String(tense) || 'presente'
+  const seedKey = String(seed)
+  const variantKey = variant === 'spain' ? 'spain' : 'latam'
+
+  const key = `conj|${GEMINI_MODEL}|${CONJ_PROMPT_VERSION}|${variantKey}|${tierNum}|${tenseKey}|${inf}|${seedKey}`
+  const hit = await readCacheText('conj', key)
+  if (hit != null) return res.json(JSON.parse(hit))
+
+  // Persoon deterministisch kiezen (seed + werkwoord) uit de variant-set, niet aan de AI overlaten.
+  const persons = drillPersons(variantKey)
+  const person = persons[pickPersonIndex(seedKey, inf, persons)]
+
+  try {
+    // Iets hogere temperature (variatie per ronde) + ruim budget: thinking-tokens tellen mee.
+    const raw = await geminiGenerate(conjugationDrillPrompt(inf, tierNum, tenseKey, seedKey, person), 0.8, 4096)
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+    let parsed
+    try {
+      parsed = JSON.parse(cleaned)
+    } catch (parseErr) {
+      console.error('[lal] /api/conjugation-drill: ongeldige JSON van Gemini:', parseErr, '\nraw:', raw.slice(0, 500))
+      return res.status(502).json({ error: 'Gemini gaf geen geldig JSON-object terug.' })
+    }
+    let result
+    if (tierNum === 1) {
+      if (!parsed || typeof parsed.person !== 'string' || typeof parsed.answer !== 'string' || parsed.person.trim() === '' || parsed.answer.trim() === '') {
+        console.error('[lal] /api/conjugation-drill: geen { person, answer } van Gemini:', raw.slice(0, 500))
+        return res.status(502).json({ error: 'Gemini gaf geen { person, answer } terug.' })
+      }
+      // Persoon forceren op de deterministisch gekozen persoon (AI-echo negeren voor zekerheid).
+      // User-facing label is Spaans (person.es), onvoorwaardelijk voor beide varianten.
+      result = { tier: 1, person: person.es, answer: parsed.answer.trim() }
+    } else if (tierNum === 2) {
+      if (!parsed || typeof parsed.sentence !== 'string' || typeof parsed.blankAnswer !== 'string' || typeof parsed.translation !== 'string' || parsed.sentence.trim() === '' || parsed.blankAnswer.trim() === '' || parsed.translation.trim() === '') {
+        console.error('[lal] /api/conjugation-drill: geen { sentence, blankAnswer, translation } van Gemini:', raw.slice(0, 500))
+        return res.status(502).json({ error: 'Gemini gaf geen { sentence, blankAnswer, translation } terug.' })
+      }
+      result = { tier: 2, sentence: parsed.sentence.trim(), blankAnswer: parsed.blankAnswer.trim(), translation: parsed.translation.trim() }
+    } else {
+      const expectedForms = Array.isArray(parsed?.expectedForms)
+        ? parsed.expectedForms.filter((f) => typeof f === 'string' && f.trim() !== '').map((f) => f.trim())
+        : []
+      if (!parsed || typeof parsed.questionNl !== 'string' || typeof parsed.modelAnswer !== 'string' || typeof parsed.translation !== 'string' || parsed.questionNl.trim() === '' || parsed.modelAnswer.trim() === '' || parsed.translation.trim() === '' || expectedForms.length === 0) {
+        console.error('[lal] /api/conjugation-drill: geen { questionNl, expectedForms, modelAnswer, translation } van Gemini:', raw.slice(0, 500))
+        return res.status(502).json({ error: 'Gemini gaf geen { questionNl, expectedForms, modelAnswer, translation } terug.' })
+      }
+      result = { tier: 3, questionNl: parsed.questionNl.trim(), expectedForms, modelAnswer: parsed.modelAnswer.trim(), translation: parsed.translation.trim() }
+    }
+    await writeCacheText('conj', key, JSON.stringify(result))
+    res.json(result)
+  } catch (err) {
+    res.status(502).json({ error: String(err?.message || err) })
+  }
+})
+
+// Gemini: volledige vervoegingstabel van één werkwoord (spiekfunctie in de client).
+app.post('/api/conjugation-table', async (req, res) => {
+  if (!hasGemini()) return res.status(503).json({ error: 'Geen GEMINI_KEY ingesteld.' })
+  const { infinitive, tense = 'presente', variant = 'latam' } = req.body ?? {}
+  if (typeof infinitive !== 'string' || infinitive.trim() === '')
+    return res.status(400).json({ error: 'Verwacht { infinitive, tense?, variant? }.' })
+  const inf = infinitive.trim()
+  const tenseKey = String(tense) || 'presente'
+  const variantKey = variant === 'spain' ? 'spain' : 'latam'
+
+  const key = `conjtable|${GEMINI_MODEL}|${CONJ_PROMPT_VERSION}|${variantKey}|${tenseKey}|${inf}`
+  const hit = await readCacheText('conjtable', key)
+  if (hit != null) return res.json(JSON.parse(hit))
+
+  try {
+    // Deterministische tabel: lage temperature, geen seed.
+    const raw = await geminiGenerate(conjugationTablePrompt(inf, tenseKey, variantKey), 0.2, 4096)
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+    let parsed
+    try {
+      parsed = JSON.parse(cleaned)
+    } catch (parseErr) {
+      console.error('[lal] /api/conjugation-table: ongeldige JSON van Gemini:', parseErr, '\nraw:', raw.slice(0, 500))
+      return res.status(502).json({ error: 'Gemini gaf geen geldig JSON-object terug.' })
+    }
+    const expectedPersons = tableRowLabels(variantKey)
+    const forms = Array.isArray(parsed?.forms)
+      ? parsed.forms.map((f) => (f && typeof f.person === 'string' && typeof f.form === 'string' ? { person: f.person.trim(), form: f.form.trim() } : null))
+      : null
+    if (!forms || forms.length !== expectedPersons.length || forms.some((f, i) => !f || f.form === '' || f.person !== expectedPersons[i])) {
+      console.error('[lal] /api/conjugation-table: geen geldige forms van Gemini:', raw.slice(0, 500))
+      return res.status(502).json({ error: 'Gemini gaf geen geldige { forms } terug.' })
+    }
+    const result = { tense: 'presente', forms }
+    await writeCacheText('conjtable', key, JSON.stringify(result))
+    res.json(result)
+  } catch (err) {
+    res.status(502).json({ error: String(err?.message || err) })
+  }
+})
+
 // Gemini: handmatig woord/frase toevoegen -> AI-vertaling + voorbeeldzin (met richting-detectie).
 app.post('/api/add-word', async (req, res) => {
   if (!hasGemini()) return res.status(503).json({ error: 'Geen GEMINI_KEY ingesteld.' })
@@ -532,11 +802,15 @@ app.post('/api/add-word', async (req, res) => {
       console.error('[lal] /api/add-word: geen { word, translation, context, detected } van Gemini:', raw.slice(0, 500))
       return res.status(502).json({ error: 'Gemini gaf geen { word, translation, context, detected } terug.' })
     }
+    const type = VALID_WORD_TYPES.includes(parsed.type) ? parsed.type : 'overig'
+    const infinitive = type === 'werkwoord' && typeof parsed.infinitive === 'string' ? parsed.infinitive.trim() : ''
     const result = {
       word: parsed.word.trim(),
       translation: parsed.translation.trim(),
       context: parsed.context.trim(),
       detected: parsed.detected,
+      type,
+      infinitive,
     }
     await writeCacheText('addword', key, JSON.stringify(result))
     res.json(result)
@@ -726,15 +1000,43 @@ app.get('/api/vocab', async (_req, res) => {
 })
 
 app.post('/api/vocab', async (req, res) => {
-  const { key, word, translation = '', context = '' } = req.body ?? {}
+  const { key, word, translation = '', context = '', type, infinitive } = req.body ?? {}
   if (typeof key !== 'string' || key.trim() === '' || typeof word !== 'string')
-    return res.status(400).json({ error: 'Verwacht { key, word, translation?, context? }.' })
+    return res.status(400).json({ error: 'Verwacht { key, word, translation?, context?, type?, infinitive? }.' })
   const words = await readVocab()
   if (!words.some((w) => w.key === key)) {
-    words.push({ key, word, translation, context, addedAt: new Date().toISOString() })
+    const entry = { key, word, translation, context, addedAt: new Date().toISOString() }
+    if (typeof type === 'string' && type.trim() !== '') {
+      // Type kwam al mee (bijv. vanuit add-word) -> niet opnieuw classificeren.
+      entry.type = type
+      entry.infinitive = typeof infinitive === 'string' ? infinitive : ''
+    } else if (hasGemini()) {
+      const classified = await classifyWord(word, context)
+      entry.type = classified.type
+      entry.infinitive = classified.infinitive
+    }
+    // Gemini niet beschikbaar en geen type meegegeven -> gewoon zonder type opslaan.
+    words.push(entry)
     await writeVocab(words)
   }
   res.json({ words })
+})
+
+// Backfill: classificeer alle woorden zonder type (zuinig: bestaande types overslaan).
+app.post('/api/vocab/enrich-missing', async (_req, res) => {
+  const words = await readVocab()
+  const total = words.length
+  if (!hasGemini()) return res.json({ enriched: 0, total })
+  let enriched = 0
+  for (const w of words) {
+    if (typeof w.type === 'string' && w.type.trim() !== '') continue
+    const classified = await classifyWord(w.word, w.context ?? '')
+    w.type = classified.type
+    w.infinitive = classified.infinitive
+    enriched++
+  }
+  if (enriched > 0) await writeVocab(words)
+  res.json({ enriched, total })
 })
 
 app.post('/api/vocab/update', async (req, res) => {

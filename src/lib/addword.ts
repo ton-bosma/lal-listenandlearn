@@ -13,6 +13,10 @@ export interface WordSuggestion {
   context: string
   /** Welke richting de AI detecteerde: NL→ES of ES→NL. Voor het omdraaien bij misdetectie. */
   detected: 'nl2es' | 'es2nl'
+  /** Woordsoort zoals door de AI gedetecteerd (optioneel). */
+  type?: 'werkwoord' | 'zelfstandig' | 'bijvoeglijk' | 'overig'
+  /** Infinitief bij werkwoorden, zoals door de AI gedetecteerd (optioneel). */
+  infinitive?: string
 }
 
 /**
@@ -37,6 +41,11 @@ export async function fetchWordSuggestion(
   const translation = (json.translation ?? '').trim()
   const context = (json.context ?? '').trim()
   const detected = json.detected === 'nl2es' || json.detected === 'es2nl' ? json.detected : 'es2nl'
+  const type =
+    json.type === 'werkwoord' || json.type === 'zelfstandig' || json.type === 'bijvoeglijk' || json.type === 'overig'
+      ? json.type
+      : undefined
+  const infinitive = json.infinitive?.trim() || undefined
   if (!word) throw new Error('Geen woordvoorstel ontvangen.')
-  return { word, translation, context, detected }
+  return { word, translation, context, detected, type, infinitive }
 }

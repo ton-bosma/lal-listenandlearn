@@ -229,8 +229,10 @@ export default function PracticePanel({
     return (
       <div className="practice">
         <div className="practice-head">
-          <button className="btn practice-back" onClick={onBack}>
-            <span className="material-icons">arrow_back</span> Terug
+          <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
+            <span className="material-icons" aria-hidden="true">
+              arrow_back
+            </span>
           </button>
           <span className="practice-title">
             {isAi ? (
@@ -254,8 +256,10 @@ export default function PracticePanel({
     return (
       <div className="practice">
         <div className="practice-head">
-          <button className="btn practice-back" onClick={onBack}>
-            <span className="material-icons">arrow_back</span> Terug
+          <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
+            <span className="material-icons" aria-hidden="true">
+              arrow_back
+            </span>
           </button>
           <span className="practice-title">Ronde klaar</span>
         </div>
@@ -269,7 +273,7 @@ export default function PracticePanel({
           </p>
           <div className="practice-summary-actions">
             <button className="btn help" onClick={startRound}>
-              Opnieuw
+              <span className="material-icons">replay</span> Opnieuw
             </button>
             <button className="btn" onClick={onBack}>
               Ander oefening
@@ -401,28 +405,42 @@ export default function PracticePanel({
 
       {flipped ? (
         <div className="practice-grade">
-          <button className="btn practice-wrong" onClick={() => handleGrade(false)}>
-            <span className="material-icons">close</span> Fout
+          <button
+            className="btn practice-wrong"
+            type="button"
+            onClick={() => handleGrade(false)}
+            aria-label="Fout"
+            title="Fout"
+          >
+            <span className="material-icons" aria-hidden="true">
+              cancel
+            </span>
           </button>
-          <button className="btn practice-right" onClick={() => handleGrade(true)}>
-            <span className="material-icons">check</span> Goed
+          <button
+            className="btn practice-right"
+            type="button"
+            onClick={() => handleGrade(true)}
+            aria-label="Goed"
+            title="Goed"
+          >
+            <span className="material-icons" aria-hidden="true">
+              check_circle
+            </span>
           </button>
         </div>
       ) : (
-        <>
-          <button
-            className="btn help practice-reveal"
-            onClick={() => setFlipped(true)}
-            disabled={!canReveal}
-          >
-<span className="material-icons">visibility</span> Toon vertaling
-          </button>
-          <p className="practice-tip">
-            {isAi
-              ? 'Lees de Spaanse zin, bedenk de vertaling, toon dan de vertaling.'
-              : 'Bedenk de betekenis, toon dan de vertaling.'}
-          </p>
-        </>
+        <button
+          className="sound-toggle practice-reveal"
+          type="button"
+          onClick={() => setFlipped(true)}
+          disabled={!canReveal}
+          aria-label="Toon vertaling"
+          title="Toon vertaling"
+        >
+          <span className="material-icons" aria-hidden="true">
+            visibility
+          </span>
+        </button>
       )}
     </div>
   )
