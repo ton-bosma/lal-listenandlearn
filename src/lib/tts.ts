@@ -22,6 +22,25 @@ export function ttsSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
+let primed = false
+/**
+ * Ontgrendelt de browser-spraak binnen een user-gesture (iOS eist een gebaar voordat
+ * speechSynthesis mag klinken). Eénmalig aanroepen vanuit een tik (navigatie/Luister); daarna
+ * werkt ook het automatische voorlezen bij zin-wissel. Op desktop stil en zonder merkbaar effect.
+ */
+export function primeSpeech(): void {
+  if (primed || !ttsSupported()) return
+  primed = true
+  try {
+    const u = new SpeechSynthesisUtterance('')
+    u.volume = 0
+    window.speechSynthesis.speak(u)
+    window.speechSynthesis.resume()
+  } catch {
+    /* stil: priming is best-effort */
+  }
+}
+
 // --- Browserstemmen cachen + abonneren -------------------------------------------
 
 let cachedVoices: SpeechSynthesisVoice[] = []

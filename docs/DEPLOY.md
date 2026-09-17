@@ -123,6 +123,27 @@ services:
 5. Build & run. App bereikbaar op `http://<nas-ip>:8080`.
 6. (Later) HTTPS via de Synology reverse proxy zodra mic-features (uitspraak) komen.
 
+## PWA & mobiel (iOS / Android) — besloten 2026-09-17
+
+De app is **PWA-ready** gemaakt (manifest + service worker via `vite-plugin-pwa`, iconen uit
+`public/logo.svg`, iOS-meta's, safe-area + toetsenbord-afhandeling, touch-interacties). De
+service worker draait alleen in de productie-build, niet in dev. Doel: drie smaken —
+**desktop-browser** (ongewijzigd), **Android-PWA** en **iOS-PWA** ("Zet op beginscherm").
+
+Randvoorwaarden voor de telefoon (nog te doen, valt in de hosting-fase):
+
+- **Vertrouwde HTTPS is verplicht** (service worker + install + betrouwbaar `speechSynthesis`).
+  Besloten route: **Synology DDNS + Let's Encrypt + de ingebouwde reverse proxy** (dus géén
+  Cloudflare-tunnel). Front en back **onder één origin** (statische build + `/api` doorproxyen)
+  → geen CORS, en de sessie-cookie voor auth werkt schoon.
+- **Auth vóór de dure endpoints.** Zodra de backend publiek bereikbaar is, moeten `/api/*` achter
+  login: **Google OAuth (Authorization Code) + e-mail-allowlist + sessie-cookie + `/api/*`-gate +
+  rate-limiting** op de betaalde calls (translate/TTS/chat). In de backend gebakken; geen aparte
+  gateway-container. **Uitgesteld** — eerst PWA-ready, daarna hosting + auth.
+- **iOS-gotcha's om te testen op het toestel:** een full-page OAuth-redirect kan uit een
+  standalone-PWA "breken" (afvangen); de **Cloud-stem** auto-play blijft op iOS geblokkeerd
+  (terugvallen op de browserstem voor auto-advance).
+
 ## Wat lokaal (per gebruiker/apparaat) blijft
 
 Voortgang (huidige zin), stemkeuze, snelheid, en het ingeladen boek — allemaal in de browser,

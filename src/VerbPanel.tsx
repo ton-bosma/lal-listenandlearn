@@ -331,52 +331,62 @@ export default function VerbPanel({ vocab, onBack, settings, variant, onFocusVer
     </span>
   )
 
+  const backButton = (
+    <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
+      <span className="material-icons" aria-hidden="true">
+        arrow_back
+      </span>
+    </button>
+  )
+
   // ---- Lege wachtrij -------------------------------------------------------
   if (queue.length === 0 && !finished) {
     return (
-      <div className="practice">
-        <div className="practice-head">
-          <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
-            <span className="material-icons" aria-hidden="true">
-              arrow_back
-            </span>
-          </button>
+      <>
+        <div className="app-shell-head practice-head">
+          {backButton}
           {title}
         </div>
-        <p className="practice-empty">
-          Je hebt nog geen werkwoorden die je goed genoeg kent — leer ze eerst als woord.
-        </p>
-      </div>
+        <div className="app-shell-body">
+          <p className="practice-empty">
+            Je hebt nog geen werkwoorden die je goed genoeg kent — leer ze eerst als woord.
+          </p>
+        </div>
+        <div className="app-shell-foot" />
+      </>
     )
   }
 
   // ---- Einde ronde ---------------------------------------------------------
   if (finished) {
     return (
-      <div className="practice">
-        <div className="practice-head">
-          <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
-            <span className="material-icons" aria-hidden="true">
-              arrow_back
-            </span>
-          </button>
+      <>
+        <div className="app-shell-head practice-head">
+          {backButton}
           <span className="practice-title">Ronde klaar</span>
         </div>
-        <div className="practice-summary">
-          <p className="practice-summary-line">
-            <span className="material-icons">celebration</span> Klaar! {total}{' '}
-            {total === 1 ? 'werkwoord' : 'werkwoorden'} afgerond.
-          </p>
-          <p className="practice-summary-sub">
-            {wrong === 0 ? 'Alles in één keer goed.' : `${wrong}× fout onderweg.`}
-          </p>
-          <div className="practice-summary-actions">
-            <button className="btn help" onClick={startRound}>
-              <span className="material-icons">replay</span> Opnieuw
-            </button>
+        <div className="app-shell-body">
+          <div className="practice-summary">
+            <p className="practice-summary-line">
+              <span className="material-icons">celebration</span> Klaar! {total}{' '}
+              {total === 1 ? 'werkwoord' : 'werkwoorden'} afgerond.
+            </p>
+            <p className="practice-summary-sub">
+              {wrong === 0 ? 'Alles in één keer goed.' : `${wrong}× fout onderweg.`}
+            </p>
           </div>
         </div>
-      </div>
+        <div className="app-shell-foot">
+          <div className="action-bar">
+            <div className="action-bar-left">
+              <button className="btn help" onClick={startRound}>
+                <span className="material-icons">replay</span> Opnieuw
+              </button>
+            </div>
+            <div className="action-bar-right" />
+          </div>
+        </div>
+      </>
     )
   }
 
@@ -397,7 +407,9 @@ export default function VerbPanel({ vocab, onBack, settings, variant, onFocusVer
   ) : null
 
   // Herbruikbaar tabel-blok (laden/fout/de 6 vormen) — gebruikt in de gespiekt- én de nagekeken-stand.
-  const tableView = (
+  // De "Ram dit werkwoord"-knop staat er los van (ramButton hieronder): die hoort in de vaste
+  // onderbalk, niet middenin de scrollende inhoud.
+  const tableContent = (
     <>
       {tableLoading && (
         <span className="practice-loading">
@@ -415,230 +427,247 @@ export default function VerbPanel({ vocab, onBack, settings, variant, onFocusVer
             <strong>{f.person}</strong> — {f.form}
           </p>
         ))}
-      {table && currentKey && (
-        <div className="practice-summary-actions">
-          <button
-            className="sound-toggle"
-            type="button"
-            onClick={() => onFocusVerb(currentKey)}
-            aria-label="Ram dit werkwoord"
-            title="Ram dit werkwoord"
-          >
-            <span className="material-icons" aria-hidden="true">
-              gavel
-            </span>
-          </button>
-        </div>
-      )}
     </>
   )
 
+  const ramButton = tableOpen && table && currentKey && (
+    <button
+      className="sound-toggle"
+      type="button"
+      onClick={() => onFocusVerb(currentKey)}
+      aria-label="Ram dit werkwoord"
+      title="Ram dit werkwoord"
+    >
+      <span className="material-icons" aria-hidden="true">
+        gavel
+      </span>
+    </button>
+  )
+
   return (
-    <div className="practice">
-      <div className="practice-head">
-        <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
-          <span className="material-icons" aria-hidden="true">
-            arrow_back
-          </span>
-        </button>
+    <>
+      <div className="app-shell-head practice-head">
+        {backButton}
         {title}
         <span className="practice-progress">
           {Math.min(done + 1, total)} / {total}
         </span>
       </div>
 
-      <div className="practice-card">
-        <div className="practice-card-face">
-          {loading && (
-            <span className="practice-loading">
-              <span className="spinner" aria-hidden="true" /> Oefening maken…
-            </span>
-          )}
-          {error && (
-            <span className="practice-card-error">
-              <span className="material-icons">warning</span> Oefening ophalen mislukt.
-            </span>
-          )}
+      <div className="app-shell-body">
+        <div className="practice-card">
+          <div className="practice-card-face">
+            {loading && (
+              <span className="practice-loading">
+                <span className="spinner" aria-hidden="true" /> Oefening maken…
+              </span>
+            )}
+            {error && (
+              <span className="practice-card-error">
+                <span className="material-icons">warning</span> Oefening ophalen mislukt.
+              </span>
+            )}
 
-          {!loading && !error && drill && (
-            <>
-              {/* Tier 1 — rijtjes dreunen: infinitief + gevraagde persoon. */}
-              {drill.tier === 1 && (
-                <span className="practice-front">
-                  {verbLabel}
-                  {' — '}
-                  <strong>{drill.person}</strong>
-                </span>
-              )}
+            {!loading && !error && drill && (
+              <>
+                {/* Tier 1 — rijtjes dreunen: infinitief + gevraagde persoon. */}
+                {drill.tier === 1 && (
+                  <span className="practice-front">
+                    {verbLabel}
+                    {' — '}
+                    <strong>{drill.person}</strong>
+                  </span>
+                )}
 
-              {/* Tier 2 — cloze: zin met het gat. */}
-              {drill.tier === 2 && sentenceParts && (
-                <span className="practice-front" lang="es">
-                  {sentenceParts[0]}
-                  <strong>{'___'}</strong>
-                  {sentenceParts.slice(1).join('___')}
-                </span>
-              )}
+                {/* Tier 2 — cloze: zin met het gat. */}
+                {drill.tier === 2 && sentenceParts && (
+                  <span className="practice-front" lang="es">
+                    {sentenceParts[0]}
+                    <strong>{'___'}</strong>
+                    {sentenceParts.slice(1).join('___')}
+                  </span>
+                )}
 
-              {/* Tier 3 — vraag/antwoord: NL-vraag. */}
-              {drill.tier === 3 && (
-                <span className="practice-front">{drill.questionNl}</span>
-              )}
-            </>
-          )}
+                {/* Tier 3 — vraag/antwoord: NL-vraag. */}
+                {drill.tier === 3 && (
+                  <span className="practice-front">{drill.questionNl}</span>
+                )}
+              </>
+            )}
+          </div>
         </div>
+
+        {/* Tier 2/3 tonen het werkwoord niet in de kaart → hier als hoverbaar label erbij. */}
+        {!loading && !error && drill && drill.tier !== 1 && (
+          <p className="practice-tip">werkwoord: {verbLabel}</p>
+        )}
+
+        {!loading && !error && drill && (
+          <>
+            {/* ---- Stand 1: antwoorden ---- */}
+            {!checked && !spied && (
+              <>
+                {drill.tier === 3 ? (
+                  <textarea
+                    ref={textareaRef}
+                    className="vocab-add-input"
+                    lang="es"
+                    placeholder="Typ je antwoord in het Spaans…"
+                    value={answer}
+                    rows={2}
+                    onChange={(e) => setAnswer(e.target.value)}
+                  />
+                ) : (
+                  <input
+                    ref={inputRef}
+                    className="vocab-add-input"
+                    lang="es"
+                    placeholder="Typ de vorm…"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        checkAnswer()
+                      }
+                    }}
+                  />
+                )}
+
+                {/* Reveal-hint (vertaling / modelantwoord) vóór het nakijken — icoon-only, blijft
+                    inline bij het invoerveld: het is een hint, geen navigatie-actie. */}
+                {(drill.tier === 2 || drill.tier === 3) && !revealed && (
+                  <button
+                    className="sound-toggle practice-reveal"
+                    type="button"
+                    onClick={() => setRevealed(true)}
+                    aria-label={drill.tier === 2 ? 'Toon vertaling' : 'Toon antwoord'}
+                    title={drill.tier === 2 ? 'Toon vertaling' : 'Toon antwoord'}
+                  >
+                    <span className="material-icons" aria-hidden="true">
+                      visibility
+                    </span>
+                  </button>
+                )}
+                {revealed && drill.tier === 2 && <p className="practice-tip">{drill.translation}</p>}
+                {revealed && drill.tier === 3 && (
+                  <div className="practice-summary">
+                    <p className="practice-summary-line" lang="es">
+                      {drill.modelAnswer}
+                    </p>
+                    <p className="practice-summary-sub">{drill.translation}</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ---- Stand 2: gespiekt vóór nakijken (telt niet mee) ---- */}
+            {tableOpen && !checked && (
+              <div className="practice-summary">
+                {tableContent}
+                <p className="practice-tip">Telt niet mee.</p>
+              </div>
+            )}
+
+            {/* ---- Stand 3: nagekeken (uitslag) ---- */}
+            {checked && (
+              <div className="practice-summary">
+                <p className={`practice-summary-line ${lastCorrect ? 'practice-right' : 'practice-wrong'}`}>
+                  <span className="material-icons">{lastCorrect ? 'check_circle' : 'cancel'}</span>
+                </p>
+                {drill.tier === 1 && (
+                  <p className="practice-summary-sub" lang="es">
+                    <strong>{drill.answer}</strong> <SpeakButton text={drill.answer} />
+                  </p>
+                )}
+                {drill.tier === 2 && (
+                  <>
+                    <p className="practice-summary-sub" lang="es">
+                      <strong>{drill.blankAnswer}</strong> <SpeakButton text={drill.blankAnswer} />
+                    </p>
+                    <p className="practice-summary-sub">{drill.translation}</p>
+                  </>
+                )}
+                {drill.tier === 3 && (
+                  <>
+                    <p className="practice-summary-sub" lang="es">
+                      {drill.modelAnswer}
+                    </p>
+                    <p className="practice-summary-sub">{drill.translation}</p>
+                  </>
+                )}
+                {/* Klik op het werkwoord toont hier de volledige vervoeging als naslag (geen score-effect). */}
+                {tableOpen && tableContent}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      {/* Tier 2/3 tonen het werkwoord niet in de kaart → hier als hoverbaar label erbij. */}
-      {!loading && !error && drill && drill.tier !== 1 && (
-        <p className="practice-tip">werkwoord: {verbLabel}</p>
-      )}
-
-      {error && (
-        <button className="btn practice-retry" onClick={() => setRetryTick((t) => t + 1)}>
-          Opnieuw proberen
-        </button>
-      )}
-
-      {!loading && !error && drill && (
-        <>
-          {/* ---- Stand 1: antwoorden ---- */}
-          {!checked && !spied && (
-            <>
-              {drill.tier === 3 ? (
-                <textarea
-                  ref={textareaRef}
-                  className="vocab-add-input"
-                  lang="es"
-                  placeholder="Typ je antwoord in het Spaans…"
-                  value={answer}
-                  rows={2}
-                  onChange={(e) => setAnswer(e.target.value)}
-                />
-              ) : (
-                <input
-                  ref={inputRef}
-                  className="vocab-add-input"
-                  lang="es"
-                  placeholder="Typ de vorm…"
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      checkAnswer()
-                    }
-                  }}
-                />
-              )}
-
-              {/* Reveal-hint (vertaling / modelantwoord) vóór het nakijken — icoon-only. */}
-              {(drill.tier === 2 || drill.tier === 3) && !revealed && (
-                <button
-                  className="sound-toggle practice-reveal"
-                  type="button"
-                  onClick={() => setRevealed(true)}
-                  aria-label={drill.tier === 2 ? 'Toon vertaling' : 'Toon antwoord'}
-                  title={drill.tier === 2 ? 'Toon vertaling' : 'Toon antwoord'}
-                >
-                  <span className="material-icons" aria-hidden="true">
-                    visibility
-                  </span>
-                </button>
-              )}
-              {revealed && drill.tier === 2 && <p className="practice-tip">{drill.translation}</p>}
-              {revealed && drill.tier === 3 && (
-                <div className="practice-summary">
-                  <p className="practice-summary-line" lang="es">
-                    {drill.modelAnswer}
-                  </p>
-                  <p className="practice-summary-sub">{drill.translation}</p>
-                </div>
-              )}
-
-              <button
-                className="sound-toggle"
-                type="button"
-                onClick={checkAnswer}
-                aria-label="Nakijken"
-                title="Nakijken (Enter)"
-              >
-                <span className="material-icons" aria-hidden="true">
-                  done
-                </span>
+      <div className="app-shell-foot">
+        <div className="action-bar">
+          <div className="action-bar-left" />
+          <div className="action-bar-right">
+            {error && (
+              <button className="btn practice-retry" onClick={() => setRetryTick((t) => t + 1)}>
+                Opnieuw proberen
               </button>
-            </>
-          )}
+            )}
 
-          {/* ---- Stand 2: gespiekt vóór nakijken (telt niet mee) ---- */}
-          {tableOpen && !checked && (
-            <div className="practice-summary">
-              {tableView}
-              <p className="practice-tip">Telt niet mee.</p>
-              <div className="practice-summary-actions">
-                <button
-                  ref={nextBtnRef}
-                  className="sound-toggle"
-                  type="button"
-                  onClick={handleNext}
-                  aria-label="Volgende"
-                  title="Volgende (Enter)"
-                >
-                  <span className="material-icons" aria-hidden="true">
-                    arrow_forward
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
+            {!loading && !error && drill && (
+              <>
+                {/* ---- Stand 1: nakijken ---- */}
+                {!checked && !spied && (
+                  <button
+                    className="sound-toggle"
+                    type="button"
+                    onClick={checkAnswer}
+                    aria-label="Nakijken"
+                    title="Nakijken (Enter)"
+                  >
+                    <span className="material-icons" aria-hidden="true">
+                      done
+                    </span>
+                  </button>
+                )}
 
-          {/* ---- Stand 3: nagekeken (uitslag) ---- */}
-          {checked && (
-            <div className="practice-summary">
-              <p className={`practice-summary-line ${lastCorrect ? 'practice-right' : 'practice-wrong'}`}>
-                <span className="material-icons">{lastCorrect ? 'check_circle' : 'cancel'}</span>
-              </p>
-              {drill.tier === 1 && (
-                <p className="practice-summary-sub" lang="es">
-                  <strong>{drill.answer}</strong> <SpeakButton text={drill.answer} />
-                </p>
-              )}
-              {drill.tier === 2 && (
-                <>
-                  <p className="practice-summary-sub" lang="es">
-                    <strong>{drill.blankAnswer}</strong> <SpeakButton text={drill.blankAnswer} />
-                  </p>
-                  <p className="practice-summary-sub">{drill.translation}</p>
-                </>
-              )}
-              {drill.tier === 3 && (
-                <>
-                  <p className="practice-summary-sub" lang="es">
-                    {drill.modelAnswer}
-                  </p>
-                  <p className="practice-summary-sub">{drill.translation}</p>
-                </>
-              )}
-              {/* Klik op het werkwoord toont hier de volledige vervoeging als naslag (geen score-effect). */}
-              {tableOpen && tableView}
-              <div className="practice-summary-actions">
-                <button
-                  ref={nextBtnRef}
-                  className="sound-toggle"
-                  type="button"
-                  onClick={handleNext}
-                  aria-label="Volgende"
-                  title="Volgende (Enter)"
-                >
-                  <span className="material-icons" aria-hidden="true">
-                    arrow_forward
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+                {/* ---- Stand 2/3: ram (naslag) + volgende ---- */}
+                {ramButton}
+
+                {tableOpen && !checked && (
+                  <button
+                    ref={nextBtnRef}
+                    className="sound-toggle"
+                    type="button"
+                    onClick={handleNext}
+                    aria-label="Volgende"
+                    title="Volgende (Enter)"
+                  >
+                    <span className="material-icons" aria-hidden="true">
+                      arrow_forward
+                    </span>
+                  </button>
+                )}
+
+                {checked && (
+                  <button
+                    ref={nextBtnRef}
+                    className="sound-toggle"
+                    type="button"
+                    onClick={handleNext}
+                    aria-label="Volgende"
+                    title="Volgende (Enter)"
+                  >
+                    <span className="material-icons" aria-hidden="true">
+                      arrow_forward
+                    </span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
   )
 }

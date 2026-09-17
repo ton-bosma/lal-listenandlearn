@@ -106,6 +106,14 @@ Elk scherm is een overlay bovenop de behouden leesstaat. **Terug = één stap om
 oefening/onderhoud → menu → lezen. Het chat-scherm keert terug naar waar je vandaan kwam
 (vanuit het menu → menu; vanuit een uitleg → de lezer).
 
+**Consistente schermindeling (app-shell).** Elk scherm — de lezer én de overlays — heeft
+dezelfde drie vaste regio's: een **gepinde header** bovenaan (links = terug/omhoog, rechts =
+scherm-acties), een **scrollende content** in het midden, en een **gepinde actiebalk** onderaan
+met vaste links/rechts-betekenis: **links = terugwaarts** (vorige / annuleren / opnieuw),
+**rechts = voorwaarts** (volgende / bevestigen / primaire actie). Header en actiebalk scrollen
+niet mee; alleen het middenstuk scrollt. Zo staat "verdergaan" overal rechtsonder en
+"terug/annuleren" overal linksonder — zoals de ◀ Vorige / Volgende ▶ van de lezer.
+
 ## Oefenmodus
 
 Twee oefeningen (`src/PracticePanel.tsx`), elk als eigen scherm, met een lichte Leitner-SRS
@@ -211,3 +219,26 @@ De client vraagt bij het opstarten `/api/health` op om te weten welke features d
 
 Browser-TTS werkt ongeacht de server-keys; ontbreekt de Web Speech API, dan meldt de app dat
 voorlezen hier niet werkt.
+
+## Mobiel & PWA
+
+De app is een **installeerbare PWA** (manifest + service worker): op de telefoon via "Zet op
+beginscherm" draait hij full-screen (standalone), met eigen icoon en de app-kleur als thema. De
+service worker cachet de app-shell + iconen-font zodat de schil offline laadt; de inhoud
+(vertaling, uitleg, voorlezen) blijft afhankelijk van de backend. De **desktop-browser verandert
+niet** — de service worker draait alleen in de productie-build, niet in dev.
+
+Op **touch-toestellen** gedragen de leesinteracties zich anders dan met een muis (desktop-hover
+en muisselectie blijven ongewijzigd):
+
+- **Tik op een woord → betekenis-popover.** Een tik toont een klein kaartje met de vertaling van
+  dat woord plus een **markeer-/uit-lijst-knop**. (Op desktop: hover toont de tooltip, klik
+  markeert — zoals voorheen.)
+- **Sleep over woorden → eigen selectie.** Vegen over meerdere woorden selecteert een reeks (eigen
+  highlight, niet het native iOS-selectiemenu) en opent dezelfde "Leg uit / Bewaar"-acties. Een
+  verticale veeg blijft gewoon scrollen.
+- **Gepinde regio's + toetsenbord.** Header en actiebalk blijven staan; bij een geopend
+  schermtoetsenbord schuift de app mee zodat het invoerveld (chat, woord-toevoegen, werkwoord)
+  zichtbaar blijft. Notch/home-indicator worden met safe-area-marges ontzien.
+- **Voorlezen op iOS.** De browserstem wordt binnen de eerste tik (Luister/navigatie) ontgrendeld,
+  zodat het automatische voorlezen bij zin-wissel daarna ook op iOS klinkt.

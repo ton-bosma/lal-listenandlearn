@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#2f6f4f"/>
+  <!-- Koptelefoon: hoofdband + twee oorschelpen. Past binnen de maskable safe-zone. -->
+  <path d="M146 316 v-52 a110 110 0 0 1 220 0 v52"
+        fill="none" stroke="#f7f6f2" stroke-width="30" stroke-linecap="round"/>
+  <rect x="126" y="300" width="60" height="104" rx="24" fill="#f7f6f2"/>
+  <rect x="326" y="300" width="60" height="104" rx="24" fill="#f7f6f2"/>
+</svg>

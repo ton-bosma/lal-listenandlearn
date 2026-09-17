@@ -45,13 +45,46 @@ body {
   vertical-align: middle;
 }
 
+/* Het leesscherm is ook een app-shell: topbar (head) en controls+nav (foot) staan vast,
+   alleen het middenstuk (instellingen + stage) scrollt. Eigen 760px-breedte per regio. */
 .app {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 24px 20px 40px;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: var(--app-vh, 100dvh);
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  max-width: none;
+}
+
+.app > .topbar,
+.reader-body,
+.reader-foot {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+  box-sizing: border-box;
+  padding-inline: 20px;
+}
+
+.app > .topbar {
+  flex-shrink: 0;
+  padding-top: calc(24px + env(safe-area-inset-top));
+}
+
+.reader-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader-foot {
+  flex-shrink: 0;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
 }
 
 .topbar {
@@ -355,6 +388,69 @@ body {
   }
 }
 
+/* Gedeelde app-shell: header en actiebalk staan vast, alleen de body scrollt. Elk scherm hangt
+   hierin, zodat de drie regio's (header / content / actiebalk) overal op dezelfde plek staan.
+   100dvh i.p.v. 100vh zodat de mobiele browserbalk de footer niet wegduwt. */
+.app-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  /* --app-vh wordt op touch-toestellen gezet op de zichtbare hoogte (visualViewport), zodat de
+     gepinde footer bij een geopend toetsenbord bovenop het toetsenbord blijft. Desktop: fallback
+     100dvh, dus ongewijzigd. */
+  height: var(--app-vh, 100dvh);
+  background: var(--bg);
+  animation: screen-fade 0.14s ease-out;
+}
+
+/* De drie regio's delen dezelfde breedte-begrenzing en horizontale marge als .screen-inner. */
+.app-shell-head,
+.app-shell-body,
+.app-shell-foot {
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  padding-inline: 20px;
+  box-sizing: border-box;
+}
+
+.app-shell-head {
+  flex-shrink: 0;
+  padding-top: calc(20px + env(safe-area-inset-top));
+}
+
+.app-shell-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-block: 4px;
+}
+
+.app-shell-foot {
+  flex-shrink: 0;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding-top: 10px;
+}
+
+/* Vaste actiebalk onderin een scherm: links = terugwaarts (vorige/annuleren/opnieuw),
+   rechts = voorwaarts (volgende/bevestigen/primair). Eén lege groep houdt de andere
+   via space-between op z'n plek. */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.action-bar-left,
+.action-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .screen-head {
   display: flex;
   align-items: center;
@@ -462,6 +558,15 @@ body {
   background: color-mix(in srgb, var(--accent-2) 12%, transparent);
 }
 
+/* Voortgang + conjugatie-balk samen in één grid-cel, zodat de verwijder-knop bij werkwoord-rijen
+   (extra conj-balk) niet naar een nieuwe regel valt. */
+.vocab-meters {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* Voortgang-indicator: MAX_BOX segmentjes, gevuld = gekend (accent), leeg = nieuw (border). */
 .vocab-progress {
   display: inline-flex;
@@ -478,6 +583,26 @@ body {
 
 .vocab-seg.filled {
   background: var(--accent);
+}
+
+/* Tweede voortgangsbalk bij werkwoorden: conjugatie-SRS met repeat-icoon + tier-label. */
+.vocab-conj {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.vocab-conj-icon {
+  font-size: 14px;
+  color: var(--muted);
+  margin-right: 1px;
+}
+
+.vocab-tier {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-left: 2px;
 }
 
 /* Filterveld boven de lijst. */
@@ -836,6 +961,65 @@ body {
 
 .word:hover .tooltip {
   opacity: 1;
+}
+
+/* Touch (geen hover): geen hover-tooltip en geen blijvende hover-kleur; betekenis komt via de
+   tik-popover. Desktop (hover: hover) blijft exact zoals hierboven. */
+@media (hover: none) {
+  .word:hover {
+    color: inherit;
+    border-bottom-color: transparent;
+  }
+  .word:hover .tooltip {
+    opacity: 0;
+  }
+}
+
+/* Touch-toestellen: eigen woord-selectie i.p.v. de native (die het vergrootglas/callout-menu
+   opent). We schakelen native selectie uit en laten verticale sleep als scroll door (pan-y). */
+@media (pointer: coarse) {
+  .spanish {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: pan-y;
+  }
+  /* Comfortabele tap-doelen voor icoon-only knoppen. */
+  .icon-btn,
+  .sound-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Woorden in het huidige sleep-selectiebereik (touch). */
+.word.selrange {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 4px;
+}
+
+/* Tik-popover: betekenis van één woord + markeer-knop (touch). */
+.word-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.word-popover-gloss {
+  font-size: 0.95rem;
+}
+
+.word-popover-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .controls {

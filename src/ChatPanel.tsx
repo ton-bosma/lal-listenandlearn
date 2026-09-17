@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { type ChatMsg, chatSend } from './lib/explain'
 import { mdToHtml } from './lib/markdown'
 
@@ -24,6 +24,12 @@ export default function ChatPanel({ title, seed, context, onBack }: ChatPanelPro
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Nieuw bericht (of "aan het typen") in beeld scrollen; de body is de scroller (app-shell).
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, sending])
 
   function send() {
     const q = input.trim()
@@ -43,14 +49,14 @@ export default function ChatPanel({ title, seed, context, onBack }: ChatPanelPro
 
   return (
     <>
-      <div className="screen-head">
+      <div className="app-shell-head screen-head">
         <button className="btn practice-back" onClick={onBack}>
           <span className="material-icons">arrow_back</span> Terug
         </button>
         <h2 className="screen-title">{title}</h2>
       </div>
-      <div className="chat-body">
-        <div className="explain-thread chat-thread">
+      <div className="app-shell-body">
+        <div className="explain-thread">
           {messages.map((m, i) =>
             m.role === 'model' ? (
               <div
@@ -66,7 +72,10 @@ export default function ChatPanel({ title, seed, context, onBack }: ChatPanelPro
           )}
           {sending && <p className="explain-typing">Antwoord ophalen…</p>}
           {error && <p className="warn">{error}</p>}
+          <div ref={bottomRef} />
         </div>
+      </div>
+      <div className="app-shell-foot">
         <div className="explain-ask chat-ask">
           <input
             className="explain-input"

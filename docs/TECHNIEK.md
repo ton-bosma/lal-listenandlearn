@@ -147,6 +147,47 @@ hernoemen (`newKey`) en dedupliceert dan.
 - `spaanleren.muted.v1` — mute (`'1'`/`'0'`).
 - `spaanleren.segmentMode.v1` — knip-modus voor import (`deterministic` | `ai`).
 
+## App-shell, PWA & mobiel
+
+**App-shell (layout).** Elk scherm valt in dezelfde drie-regio-shell (CSS in `src/index.css`):
+`.app-shell` = flex-kolom op `var(--app-vh, 100dvh)`, met `.app-shell-head` (gepind),
+`.app-shell-body` (`flex:1; overflow-y:auto; min-height:0`) en `.app-shell-foot` (gepind). De
+actiebalk in de foot is `.action-bar` (`justify-content: space-between`) met `.action-bar-left`
+(terugwaarts) en `.action-bar-right` (voorwaarts). De lezer gebruikt dezelfde opzet met eigen
+760px-brede regio's (`.reader-body` / `.reader-foot`). Safe-area's worden met
+`env(safe-area-inset-*)` op de gepinde regio's ontzien.
+
+**Toetsenbord-hoogte.** `src/lib/viewport.ts` (`useAppViewportHeight`, aangeroepen in `App.tsx`)
+zet op **coarse pointers** de CSS-var `--app-vh` gelijk aan `visualViewport.height`, zodat de
+shell meekrimpt met het schermtoetsenbord en de gepinde footer erboven blijft. Op desktop draait
+de hook niet → fallback `100dvh`, ongewijzigd.
+
+**Touch-interacties** (in `App.tsx`, rond de `.spanish`-zin): pointer-handlers die alleen op
+niet-muis (`e.pointerType !== 'mouse'`) actief zijn. Een tik opent de betekenis-popover
+(`tapWord`), een horizontale sleep bouwt een eigen woord-selectie (`touchSel`, met scroll-vs-select
+drempel via richting) en roept `applySelection` aan. Native selectie/callout is op coarse pointers
+uitgezet (`user-select:none` + `-webkit-touch-callout:none`, `touch-action: pan-y`); hover-tooltips
+staan achter `@media (hover: hover)`. Muis (desktop) gebruikt onverkort het bestaande pad
+(`onMouseUp` → `handleSelection`, `onClick` → `toggleMark`).
+
+**TTS-ontgrendeling (iOS).** `primeSpeech()` in `src/lib/tts.ts` speelt binnen een user-gesture
+(navigatie/Luister) éénmalig een stille utterance af; daarna mag `speechSynthesis` ook vanuit het
+auto-voorlees-effect klinken. De **Cloud-stem** (`cloudtts.ts`, `new Audio().play()` per keer)
+blijft op iOS voor auto-play geblokkeerd — bekende follow-up.
+
+**PWA** (`vite-plugin-pwa`, config in `vite.config.ts`): `registerType: 'autoUpdate'`,
+`generateSW` (Workbox) met precache van de app-shell en een CacheFirst-runtime-cache voor de
+Material-Icons-font; `manifest` (standalone, thema-/achtergrondkleur, `orientation`).
+`devOptions.enabled: false` → **geen service worker in dev**. Iconen komen uit één bron
+(`public/logo.svg`) via `@vite-pwa/assets-generator` (config in `pwa-assets.config.ts`) → de
+`public/*.png` + `apple-touch-icon` + `favicon`; `index.html` bevat `viewport-fit=cover` en de
+iOS-meta's (`apple-mobile-web-app-*`).
+
+**Leespositie hervatten.** `src/lib/reader.ts` pint de bewaarde positie éénmalig vast
+(`resumeRef = loadProgress()`) en herkent een "nieuw boek" op inhoud-identiteit (`lastContentRef`
+vs. `contentRef`) i.p.v. op een wegwerp-vlag. Zo overleeft het hervatten StrictMode's dubbele
+mount (verse tab bleef anders op regel 1 staan).
+
 ## Productie
 
 Bestaat er een `dist/` (Vite-build), dan serveert de backend die statisch plus een
@@ -159,7 +200,8 @@ Frontend (`src/`):
 
 - `App.tsx` — hoofdscherm: lezer, reveal-niveaus, schermmodel, instellingen, mute, alle
   UI-orkestratie.
-- `PracticePanel.tsx` — oefenmodus (AI-voorbeeldzin + woord-flashcard).
+- `PracticePanel.tsx` — oefenmodus (AI-voorbeeldzin + woord-flashcard ES↔NL).
+- `VerbPanel.tsx` / `VerbFocusPanel.tsx` — werkwoorden oefenen (conjugatie-drills / "rammen").
 - `ChatPanel.tsx` — full-screen chat (vrije chat + vervolg vanuit uitleg).
 - `lib/reader.ts` — leesbron achter één interface (deterministisch + voortschrijdende AI-modus).
 - `lib/storage.ts` — boek-model + alle localStorage (boek, voortgang, instellingen).
@@ -174,8 +216,10 @@ Frontend (`src/`):
 - `lib/explain.ts` — uitleg + chat via `/api/chat`.
 - `lib/addword.ts` — AI-woordvoorstel via `/api/add-word`.
 - `lib/vocab.ts` — woordenlijst-client (`/api/vocab*`).
-- `lib/practice.ts` — Leitner-SRS + oefenzin-fetch (`/api/practice-sentence`).
-- `lib/tts.ts` — voorlezen (browser + Cloud, één ingang).
+- `lib/practice.ts` — Leitner-SRS (per richting: es2nl / nl2es / conj) + oefenzin-fetch.
+- `lib/verbs.ts` — conjugatie-tiers (box→tier) + drill-logica.
+- `lib/viewport.ts` — `--app-vh` gelijkhouden aan `visualViewport` (toetsenbord, alleen touch).
+- `lib/tts.ts` — voorlezen (browser + Cloud, één ingang) + `primeSpeech()` (iOS-ontgrendeling).
 - `lib/cloudtts.ts` — Cloud TTS-client (`/api/tts`, `/api/voices`).
 - `lib/health.ts` — feature-detectie (`/api/health`).
 - `lib/markdown.ts` — veilige Markdown→HTML-subset voor uitleg/chat.

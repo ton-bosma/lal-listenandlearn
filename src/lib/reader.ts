@@ -9,9 +9,12 @@
 //    alleen de doel-chunk. Lege chunks (front-matter/rommel) worden bij het laden overgeslagen.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Book } from './storage'
+import type { Book, Progress } from './storage'
 import { addSection, loadProgress, saveBook, saveProgress } from './storage'
 import { detectStoryStart, ensureUnits } from './aisegment'
+
+/** Sentinel: nog geen enkel boek geïnitialiseerd (te onderscheiden van een echte `null`-inhoud). */
+const NO_CONTENT = Symbol('no-content')
 
 /** Wat de dropdown nodig heeft: een titel + of die door de AI verzonnen is. */
 export interface ReaderChapter {
@@ -100,7 +103,13 @@ export function useReader(
   const indexRef = useRef(index)
   indexRef.current = index
   const busyRef = useRef(false)
-  const firstInitRef = useRef(true)
+  // Bewaarde leespositie één keer vastpinnen, vóór het save-effect 'm kan overschrijven. Zo
+  // overleeft het hervatten StrictMode's dubbele mount (die anders een wegwerp-vlag zou slopen).
+  const resumeRef = useRef<Progress | null>(null)
+  if (resumeRef.current === null) resumeRef.current = loadProgress()
+  // Inhoud-identiteit van het laatst geïnitialiseerde boek. Zelfde inhoud opnieuw = hervatten
+  // (o.a. StrictMode-remount); écht andere inhoud = nieuw boek, vooraan beginnen.
+  const lastContentRef = useRef<unknown>(NO_CONTENT)
 
   const isAi = book?.mode === 'ai'
 
@@ -149,9 +158,13 @@ export function useReader(
   const contentRef = book?.rawChunks ?? book?.sentences ?? null
   useEffect(() => {
     const b = bookRef.current
-    const first = firstInitRef.current
-    firstInitRef.current = false
-    const prog = first ? loadProgress() : { index: 0, chunk: undefined, unit: undefined }
+    // Zelfde inhoud opnieuw initialiseren (o.a. StrictMode-remount) = hervatten; alleen écht
+    // andere inhoud telt als een nieuw geladen boek en begint vooraan.
+    const isNewBook = lastContentRef.current !== NO_CONTENT && lastContentRef.current !== contentRef
+    lastContentRef.current = contentRef
+    const prog: Progress = isNewBook
+      ? { index: 0, chunk: undefined, unit: undefined }
+      : resumeRef.current!
     setError(null)
 
     if (!b || b.mode !== 'ai') {
@@ -178,14 +191,14 @@ export function useReader(
         const total = bb.rawChunks?.length ?? 0
         // Hervatten -> bewaarde chunk (nooit onder de vloer); anders bij de vloer beginnen.
         const resume =
-          first && typeof prog.chunk === 'number' && prog.chunk >= floor && prog.chunk < total
+          !isNewBook && typeof prog.chunk === 'number' && prog.chunk >= floor && prog.chunk < total
         const startChunk = resume ? (prog.chunk as number) : floor
         const r = await loadDir(bb, startChunk, 1)
         if (cancelled) return
         if (r.units) {
           setView({ sentences: r.units, chunks: [r.chunk], counts: [r.units.length] })
           const wantUnit =
-            first && prog.chunk === r.chunk && typeof prog.unit === 'number' && prog.unit < r.units.length
+            !isNewBook && prog.chunk === r.chunk && typeof prog.unit === 'number' && prog.unit < r.units.length
               ? prog.unit
               : 0
           setIndex(wantUnit)

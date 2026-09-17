@@ -227,8 +227,8 @@ export default function PracticePanel({
   // ---- Lege lijst ----------------------------------------------------------
   if (vocab.length === 0) {
     return (
-      <div className="practice">
-        <div className="practice-head">
+      <>
+        <div className="app-shell-head practice-head">
           <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
             <span className="material-icons" aria-hidden="true">
               arrow_back
@@ -244,18 +244,21 @@ export default function PracticePanel({
             )}
           </span>
         </div>
-        <p className="practice-empty">
-          Nog geen woorden om te oefenen. Markeer eerst wat woorden in de tekst.
-        </p>
-      </div>
+        <div className="app-shell-body">
+          <p className="practice-empty">
+            Nog geen woorden om te oefenen. Markeer eerst wat woorden in de tekst.
+          </p>
+        </div>
+        <div className="app-shell-foot" />
+      </>
     )
   }
 
   // ---- Einde ronde ---------------------------------------------------------
   if (finished) {
     return (
-      <div className="practice">
-        <div className="practice-head">
+      <>
+        <div className="app-shell-head practice-head">
           <button className="btn practice-back" onClick={onBack} aria-label="Terug" title="Terug">
             <span className="material-icons" aria-hidden="true">
               arrow_back
@@ -263,24 +266,32 @@ export default function PracticePanel({
           </button>
           <span className="practice-title">Ronde klaar</span>
         </div>
-        <div className="practice-summary">
-          <p className="practice-summary-line">
-            <span className="material-icons">celebration</span> Klaar! {total}{' '}
-            {total === 1 ? 'kaart' : 'kaarten'} afgerond.
-          </p>
-          <p className="practice-summary-sub">
-            {wrong === 0 ? 'Alles in één keer goed.' : `${wrong}× fout onderweg.`}
-          </p>
-          <div className="practice-summary-actions">
-            <button className="btn help" onClick={startRound}>
-              <span className="material-icons">replay</span> Opnieuw
-            </button>
-            <button className="btn" onClick={onBack}>
-              Ander oefening
-            </button>
+        <div className="app-shell-body">
+          <div className="practice-summary">
+            <p className="practice-summary-line">
+              <span className="material-icons">celebration</span> Klaar! {total}{' '}
+              {total === 1 ? 'kaart' : 'kaarten'} afgerond.
+            </p>
+            <p className="practice-summary-sub">
+              {wrong === 0 ? 'Alles in één keer goed.' : `${wrong}× fout onderweg.`}
+            </p>
           </div>
         </div>
-      </div>
+        <div className="app-shell-foot">
+          <div className="action-bar">
+            <div className="action-bar-left">
+              <button className="btn help" onClick={startRound}>
+                <span className="material-icons">replay</span> Opnieuw
+              </button>
+            </div>
+            <div className="action-bar-right">
+              <button className="btn" onClick={onBack}>
+                Ander oefening
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
     )
   }
 
@@ -289,8 +300,8 @@ export default function PracticePanel({
   const canReveal = isAi ? !!aiSentence && !aiLoading && !aiError : !!currentWord
 
   return (
-    <div className="practice">
-      <div className="practice-head">
+    <>
+      <div className="app-shell-head practice-head">
         <button className="btn practice-back" onClick={onBack}>
           <span className="material-icons">arrow_back</span> Terug
         </button>
@@ -308,140 +319,149 @@ export default function PracticePanel({
         </span>
       </div>
 
-      <div className={`practice-card${flipped ? ' flipped' : ''}${canReveal ? '' : ' not-ready'}`}>
-        {!flipped ? (
-          <div className="practice-card-face">
-            {isAi ? (
-              <>
-                {aiLoading && (
-                  <span className="practice-loading">
-                    <span className="spinner" aria-hidden="true" /> Zin maken…
-                  </span>
-                )}
-                {aiError && (
-                  <span className="practice-card-error">
-                    <span className="material-icons">warning</span> Zin ophalen mislukt.
-                  </span>
-                )}
-                {!aiLoading && !aiError && aiSentence && (
-                  <span className="practice-front" lang="es">
-                    {tokenize(aiSentence.sentence).map((t, i) =>
-                      t.isWord ? (
-                        <span
-                          className={`word${markedKeys.has(t.key) ? ' marked' : ''}`}
-                          key={i}
-                          onClick={() => onToggleMark(t.key, t.raw, aiSentence.sentence, glosses?.[t.key])}
-                        >
-                          {t.raw}
-                          <span className="tooltip">
-                            {glosses ? glosses[t.key] ?? '—' : '…'}
-                            <span className="tooltip-hint">
-                              {markedKeys.has(t.key) ? 'klik: uit lijst' : 'klik: markeer'}
+      <div className="app-shell-body">
+        <div className={`practice-card${flipped ? ' flipped' : ''}${canReveal ? '' : ' not-ready'}`}>
+          {!flipped ? (
+            <div className="practice-card-face">
+              {isAi ? (
+                <>
+                  {aiLoading && (
+                    <span className="practice-loading">
+                      <span className="spinner" aria-hidden="true" /> Zin maken…
+                    </span>
+                  )}
+                  {aiError && (
+                    <span className="practice-card-error">
+                      <span className="material-icons">warning</span> Zin ophalen mislukt.
+                    </span>
+                  )}
+                  {!aiLoading && !aiError && aiSentence && (
+                    <span className="practice-front" lang="es">
+                      {tokenize(aiSentence.sentence).map((t, i) =>
+                        t.isWord ? (
+                          <span
+                            className={`word${markedKeys.has(t.key) ? ' marked' : ''}`}
+                            key={i}
+                            onClick={() => onToggleMark(t.key, t.raw, aiSentence.sentence, glosses?.[t.key])}
+                          >
+                            {t.raw}
+                            <span className="tooltip">
+                              {glosses ? glosses[t.key] ?? '—' : '…'}
+                              <span className="tooltip-hint">
+                                {markedKeys.has(t.key) ? 'klik: uit lijst' : 'klik: markeer'}
+                              </span>
                             </span>
                           </span>
-                        </span>
-                      ) : (
-                        <span key={i}>{t.raw}</span>
-                      ),
-                    )}
-                  </span>
-                )}
-              </>
-            ) : dir === 'nl2es' ? (
-              <span className="practice-front">{currentWord?.translation || '—'}</span>
-            ) : (
-              <span className="practice-front" lang="es">
-                {currentWord?.word || '—'}
-              </span>
-            )}
-          </div>
-        ) : (
-          <div
-            className="practice-card-face practice-card-back"
-            onClick={() => setFlipped(false)}
-            role="button"
-            tabIndex={0}
-            title="Klik om terug te gaan naar het origineel"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                setFlipped(false)
-              }
-            }}
-          >
-            {isAi ? (
-              <span className="practice-back-nl">{aiSentence?.translation || '—'}</span>
-            ) : dir === 'nl2es' ? (
-              <>
-                <span className="practice-back-nl" lang="es">
+                        ) : (
+                          <span key={i}>{t.raw}</span>
+                        ),
+                      )}
+                    </span>
+                  )}
+                </>
+              ) : dir === 'nl2es' ? (
+                <span className="practice-front">{currentWord?.translation || '—'}</span>
+              ) : (
+                <span className="practice-front" lang="es">
                   {currentWord?.word || '—'}
                 </span>
-                {currentWord?.context && (
-                  <span className="practice-back-context" lang="es">
-                    “{currentWord.context}”
+              )}
+            </div>
+          ) : (
+            <div
+              className="practice-card-face practice-card-back"
+              onClick={() => setFlipped(false)}
+              role="button"
+              tabIndex={0}
+              title="Klik om terug te gaan naar het origineel"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setFlipped(false)
+                }
+              }}
+            >
+              {isAi ? (
+                <span className="practice-back-nl">{aiSentence?.translation || '—'}</span>
+              ) : dir === 'nl2es' ? (
+                <>
+                  <span className="practice-back-nl" lang="es">
+                    {currentWord?.word || '—'}
                   </span>
-                )}
-              </>
-            ) : (
-              <>
-                <span className="practice-back-nl">{currentWord?.translation || '—'}</span>
-                {currentWord?.context && (
-                  <span className="practice-back-context" lang="es">
-                    “{currentWord.context}”
-                  </span>
-                )}
-              </>
-            )}
-            <span className="practice-flip-hint">klik om terug naar het origineel</span>
-          </div>
-        )}
+                  {currentWord?.context && (
+                    <span className="practice-back-context" lang="es">
+                      “{currentWord.context}”
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="practice-back-nl">{currentWord?.translation || '—'}</span>
+                  {currentWord?.context && (
+                    <span className="practice-back-context" lang="es">
+                      “{currentWord.context}”
+                    </span>
+                  )}
+                </>
+              )}
+              <span className="practice-flip-hint">klik om terug naar het origineel</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {isAi && aiError && !flipped && (
-        <button className="btn practice-retry" onClick={() => setRetryTick((t) => t + 1)}>
-          Opnieuw proberen
-        </button>
-      )}
-
-      {flipped ? (
-        <div className="practice-grade">
-          <button
-            className="btn practice-wrong"
-            type="button"
-            onClick={() => handleGrade(false)}
-            aria-label="Fout"
-            title="Fout"
-          >
-            <span className="material-icons" aria-hidden="true">
-              cancel
-            </span>
-          </button>
-          <button
-            className="btn practice-right"
-            type="button"
-            onClick={() => handleGrade(true)}
-            aria-label="Goed"
-            title="Goed"
-          >
-            <span className="material-icons" aria-hidden="true">
-              check_circle
-            </span>
-          </button>
+      <div className="app-shell-foot">
+        <div className="action-bar">
+          <div className="action-bar-left">
+            {flipped && (
+              <button
+                className="btn practice-wrong"
+                type="button"
+                onClick={() => handleGrade(false)}
+                aria-label="Fout"
+                title="Fout"
+              >
+                <span className="material-icons" aria-hidden="true">
+                  cancel
+                </span>
+              </button>
+            )}
+          </div>
+          <div className="action-bar-right">
+            {isAi && aiError && !flipped && (
+              <button className="btn practice-retry" onClick={() => setRetryTick((t) => t + 1)}>
+                Opnieuw proberen
+              </button>
+            )}
+            {flipped ? (
+              <button
+                className="btn practice-right"
+                type="button"
+                onClick={() => handleGrade(true)}
+                aria-label="Goed"
+                title="Goed"
+              >
+                <span className="material-icons" aria-hidden="true">
+                  check_circle
+                </span>
+              </button>
+            ) : (
+              <button
+                className="sound-toggle practice-reveal"
+                type="button"
+                onClick={() => setFlipped(true)}
+                disabled={!canReveal}
+                aria-label="Toon vertaling"
+                title="Toon vertaling"
+              >
+                <span className="material-icons" aria-hidden="true">
+                  visibility
+                </span>
+              </button>
+            )}
+          </div>
         </div>
-      ) : (
-        <button
-          className="sound-toggle practice-reveal"
-          type="button"
-          onClick={() => setFlipped(true)}
-          disabled={!canReveal}
-          aria-label="Toon vertaling"
-          title="Toon vertaling"
-        >
-          <span className="material-icons" aria-hidden="true">
-            visibility
-          </span>
-        </button>
-      )}
-    </div>
+      </div>
+    </>
   )
 }

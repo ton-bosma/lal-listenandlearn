@@ -4,6 +4,7 @@ import { cleanWord, normalizeWord, tokenize } from './lib/words'
 import {
   getChosenVoiceId,
   getSpanishVoices,
+  primeSpeech,
   setChosenVoiceId,
   speak,
   stopSpeaking,
@@ -40,6 +41,7 @@ import { extractEpubBook } from './lib/epub'
 import { buildSentences } from './lib/sentences'
 import { buildChunks } from './lib/chunk'
 import { useReader } from './lib/reader'
+import { useAppViewportHeight } from './lib/viewport'
 import { detectBookStart } from './lib/frontmatter'
 import { translateSentence, translateWords } from './lib/translate'
 import { type ChatMsg, explainFragment } from './lib/explain'
@@ -47,7 +49,8 @@ import { mdToHtml } from './lib/markdown'
 import { type Features, NO_FEATURES, fetchFeatures } from './lib/health'
 import { type VocabWord, addVocab, listVocab, removeVocab, updateVocab } from './lib/vocab'
 import { type WordSuggestion, fetchWordSuggestion } from './lib/addword'
-import { MAX_BOX, loadSrs } from './lib/practice'
+import { MAX_BOX, loadSrs, srsKeyFor } from './lib/practice'
+import { verbBoxToTier } from './lib/verbs'
 import PracticePanel from './PracticePanel'
 import VerbPanel from './VerbPanel'
 import VerbFocusPanel from './VerbFocusPanel'
@@ -106,6 +109,7 @@ function curateCloudVoices(voices: CloudVoice[]): CloudVoice[] {
 }
 
 export default function App() {
+  useAppViewportHeight()
   const [book, setBook] = useState<Book | null>(() => loadBook())
   // Leesbron (beide knip-modi achter één interface): levert de zichtbare zinnen, de positie,
   // navigatie en hoofdstukken. In AI-modus laadt hij voortschrijdend per chunk.
@@ -226,6 +230,13 @@ export default function App() {
   // chat-scherm. `explainChat` bevat de (initiële) uitleg-beurt, `explainCtx` waar die over gaat
   // (fragment+zin). Reset bij zin-wissel.
   const [selection, setSelection] = useState('')
+  // Touch: tik toont de betekenis-popover van één woord; sleep selecteert een reeks woorden.
+  const [tapWord, setTapWord] = useState<{ key: string; raw: string } | null>(null)
+  const [touchSel, setTouchSel] = useState<[number, number] | null>(null)
+  const selAnchorRef = useRef<number | null>(null)
+  const selModeRef = useRef<'idle' | 'pending' | 'drag' | 'scroll'>('idle')
+  const ptStartRef = useRef({ x: 0, y: 0 })
+  const suppressClickRef = useRef(false)
   const [explainChat, setExplainChat] = useState<ChatMsg[]>([])
   const [explainCtx, setExplainCtx] = useState<{ fragment: string; sentence: string } | null>(null)
   const [explaining, setExplaining] = useState(false)
@@ -250,6 +261,8 @@ export default function App() {
     setGlosses(null)
     setError(null)
     setSelection('')
+    setTapWord(null)
+    setTouchSel(null)
     setExplainChat([])
     setExplainCtx(null)
     setExplainError(null)
@@ -305,6 +318,7 @@ export default function App() {
   // Handmatig voorlezen ("Luister"). Bij geluid uit is de knop verborgen; guard voor de zekerheid.
   function handleListen() {
     if (audioMuted) return
+    primeSpeech()
     speak(sentence, rate)
   }
 
@@ -372,16 +386,19 @@ export default function App() {
   // Navigatie loopt via de reader; hier alleen de gedeelde UI-bijwerking (spraak stoppen, zin
   // weer kaal). De reader leest de nieuwe zin vanzelf voor bij de positiewissel (auto-speak).
   function navPrev() {
+    primeSpeech() // binnen de tik: ontgrendelt iOS-spraak zodat het auto-voorlezen daarna klinkt
     stopSpeaking()
     setReveal(freshReveal())
     reader.goPrev()
   }
   function navNext() {
+    primeSpeech()
     stopSpeaking()
     setReveal(freshReveal())
     reader.goNext()
   }
   function navChapter(i: number) {
+    primeSpeech()
     stopSpeaking()
     setReveal(freshReveal())
     reader.jumpToChapter(i)
@@ -460,15 +477,82 @@ export default function App() {
     }
   }
 
-  // Muisselectie binnen de Spaanse zin opvangen -> knop "Leg uit".
-  function handleSelection() {
-    const text = window.getSelection()?.toString().trim() ?? ''
+  // Een (nieuwe) selectie toepassen -> toont de "Leg uit / Bewaar"-acties. Gedeeld door muis
+  // (native selectie) en touch (eigen sleep-selectie).
+  function applySelection(text: string) {
     setSelection(text)
     if (text === '') return
+    setTapWord(null)
     // Nieuwe selectie -> oude uitleg opruimen.
     setExplainChat([])
     setExplainCtx(null)
     setExplainError(null)
+  }
+
+  // Muisselectie binnen de Spaanse zin opvangen -> knop "Leg uit" (desktop; ongewijzigd pad).
+  function handleSelection() {
+    applySelection(window.getSelection()?.toString().trim() ?? '')
+  }
+
+  // --- Touch: eigen woord-selectie + tik-voor-betekenis. Muis raakt dit niet (early return).
+  function wordIndexAt(x: number, y: number): number | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null
+    const w = el?.closest('[data-widx]') as HTMLElement | null
+    if (!w) return null
+    const i = Number(w.dataset.widx)
+    return Number.isNaN(i) ? null : i
+  }
+
+  function onSentencePointerDown(e: React.PointerEvent) {
+    if (e.pointerType === 'mouse') return
+    ptStartRef.current = { x: e.clientX, y: e.clientY }
+    selAnchorRef.current = wordIndexAt(e.clientX, e.clientY)
+    selModeRef.current = selAnchorRef.current == null ? 'idle' : 'pending'
+  }
+
+  function onSentencePointerMove(e: React.PointerEvent) {
+    if (e.pointerType === 'mouse') return
+    const mode = selModeRef.current
+    if (mode === 'idle' || mode === 'scroll') return
+    const dx = e.clientX - ptStartRef.current.x
+    const dy = e.clientY - ptStartRef.current.y
+    if (mode === 'pending') {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        selModeRef.current = 'scroll' // verticale sleep = de body scrollen, geen selectie
+        return
+      }
+      if (Math.abs(dx) > 8) selModeRef.current = 'drag'
+      else return
+    }
+    e.preventDefault() // horizontale sleep = selecteren; scroll onderdrukken
+    const j = wordIndexAt(e.clientX, e.clientY)
+    const a = selAnchorRef.current
+    if (a != null && j != null) setTouchSel([Math.min(a, j), Math.max(a, j)])
+  }
+
+  function onSentencePointerUp(e: React.PointerEvent) {
+    if (e.pointerType === 'mouse') return
+    const mode = selModeRef.current
+    selModeRef.current = 'idle'
+    if (mode === 'drag') {
+      suppressClickRef.current = true
+      const range = touchSel
+      setTouchSel(null)
+      if (range) {
+        const text = tokenize(sentence)
+          .slice(range[0], range[1] + 1)
+          .map((t) => t.raw)
+          .join('')
+          .trim()
+        applySelection(text)
+      }
+    } else if (mode === 'pending') {
+      suppressClickRef.current = true // tik: geen markeren, wel betekenis tonen
+      const i = selAnchorRef.current
+      const t = i != null ? tokenize(sentence)[i] : undefined
+      if (t?.isWord) setTapWord({ key: t.key, raw: t.raw })
+    }
+    selAnchorRef.current = null
   }
 
   function runExplain() {
@@ -702,14 +786,14 @@ export default function App() {
       </header>
 
       {screen === 'menu' && (
-        <div className="screen" aria-label="Oefenen">
-          <div className="screen-inner">
-            <div className="screen-head">
-              <button className="btn practice-back" onClick={() => setScreen('read')}>
-                <span className="material-icons">arrow_back</span> Terug naar lezen
-              </button>
-              <h2 className="screen-title">Oefenen</h2>
-            </div>
+        <div className="app-shell" aria-label="Oefenen">
+          <div className="app-shell-head screen-head">
+            <button className="btn practice-back" onClick={() => setScreen('read')}>
+              <span className="material-icons">arrow_back</span> Terug naar lezen
+            </button>
+            <h2 className="screen-title">Oefenen</h2>
+          </div>
+          <div className="app-shell-body">
             <div className="practice-menu">
               <button
                 className="btn practice-choice"
@@ -837,14 +921,14 @@ export default function App() {
       )}
 
       {screen === 'vocab' && (
-        <div className="screen" aria-label="Woordenlijst">
-          <div className="screen-inner">
-            <div className="screen-head">
-              <button className="btn practice-back" onClick={() => setScreen('menu')}>
-                <span className="material-icons">arrow_back</span> Terug
-              </button>
-              <h2 className="screen-title">Woordenlijst ({vocab.length})</h2>
-            </div>
+        <div className="app-shell" aria-label="Woordenlijst">
+          <div className="app-shell-head screen-head">
+            <button className="btn practice-back" onClick={() => setScreen('menu')}>
+              <span className="material-icons">arrow_back</span> Terug
+            </button>
+            <h2 className="screen-title">Woordenlijst ({vocab.length})</h2>
+          </div>
+          <div className="app-shell-body">
 
             {/* AI-toevoegen: typ een woord (NL of ES) en laat de AI vertaling + voorbeeldzin maken. */}
             {features.gemini ? (
@@ -1013,6 +1097,7 @@ export default function App() {
                         {w.translation || '—'}
                       </span>
                     )}
+                    <div className="vocab-meters">
                     {(() => {
                       const box = srs[w.key]?.box ?? 0
                       return (
@@ -1027,6 +1112,32 @@ export default function App() {
                         </span>
                       )
                     })()}
+                    {w.type === 'werkwoord' &&
+                      (() => {
+                        const conjBox = srs[srsKeyFor(w.key, 'conj')]?.box ?? 0
+                        const tier = verbBoxToTier(
+                          conjBox,
+                          verbSettings.tier2Min,
+                          verbSettings.tier3Min,
+                        )
+                        return (
+                          <span
+                            className="vocab-conj"
+                            title={`Vervoegen: box ${conjBox} / ${MAX_BOX} — tier ${tier}`}
+                            aria-label={`Vervoegen: box ${conjBox} van ${MAX_BOX}, tier ${tier}`}
+                          >
+                            <span className="material-icons vocab-conj-icon">repeat</span>
+                            {Array.from({ length: MAX_BOX }, (_, i) => (
+                              <span
+                                key={i}
+                                className={`vocab-seg${i < conjBox ? ' filled' : ''}`}
+                              />
+                            ))}
+                            <span className="vocab-tier">T{tier}</span>
+                          </span>
+                        )
+                      })()}
+                    </div>
                     <button
                       className="vocab-del"
                       onClick={() => {
@@ -1047,58 +1158,58 @@ export default function App() {
       )}
 
       {(screen === 'flashcard' || screen === 'flashcardNl' || screen === 'aisentence') && (
-        <div className="screen" aria-label="Oefenen">
-          <div className="screen-inner">
-            <PracticePanel
-              mode={screen === 'aisentence' ? 'aisentence' : 'flashcard'}
-              flashDir={screen === 'flashcardNl' ? 'nl2es' : 'es2nl'}
-              vocab={vocab}
-              onBack={() => setScreen('menu')}
-              markedKeys={markedKeys}
-              onToggleMark={toggleMark}
-            />
-          </div>
+        <div className="app-shell" aria-label="Oefenen">
+          <PracticePanel
+            mode={screen === 'aisentence' ? 'aisentence' : 'flashcard'}
+            flashDir={screen === 'flashcardNl' ? 'nl2es' : 'es2nl'}
+            vocab={vocab}
+            onBack={() => setScreen('menu')}
+            markedKeys={markedKeys}
+            onToggleMark={toggleMark}
+          />
         </div>
       )}
 
       {screen === 'verbs' && (
-        <div className="screen" aria-label="Werkwoorden oefenen">
-          <div className="screen-inner">
-            <VerbPanel
-              vocab={vocab}
-              onBack={() => setScreen('menu')}
-              settings={verbSettings}
-              variant={spanishVariant}
-              onFocusVerb={(key) => startVerbFocus([key], 'verbs')}
-            />
-          </div>
+        <div className="app-shell" aria-label="Werkwoorden oefenen">
+          <VerbPanel
+            vocab={vocab}
+            onBack={() => setScreen('menu')}
+            settings={verbSettings}
+            variant={spanishVariant}
+            onFocusVerb={(key) => startVerbFocus([key], 'verbs')}
+          />
         </div>
       )}
 
       {screen === 'verbPicker' && (
-        <div className="screen" aria-label="Werkwoord kiezen">
-          <div className="screen-inner">
-            <div className="screen-head">
-              <button
-                className="btn practice-back"
-                onClick={() => setScreen('menu')}
-                aria-label="Terug"
-                title="Terug"
-              >
-                <span className="material-icons" aria-hidden="true">
-                  arrow_back
-                </span>
-              </button>
-              <span className="practice-title">
-                <span className="material-icons">gavel</span> Kies werkwoorden om te rammen
+        <div className="app-shell" aria-label="Werkwoord kiezen">
+          <div className="app-shell-head screen-head">
+            <button
+              className="btn practice-back"
+              onClick={() => setScreen('menu')}
+              aria-label="Terug"
+              title="Terug"
+            >
+              <span className="material-icons" aria-hidden="true">
+                arrow_back
               </span>
-            </div>
-            {(() => {
-              const verbs = vocab.filter((w) => w.type === 'werkwoord')
-              if (verbs.length === 0)
-                return <p className="practice-empty">Nog geen werkwoorden in je lijst.</p>
+            </button>
+            <span className="practice-title">
+              <span className="material-icons">gavel</span> Kies werkwoorden om te rammen
+            </span>
+          </div>
+          {(() => {
+            const verbs = vocab.filter((w) => w.type === 'werkwoord')
+            if (verbs.length === 0)
               return (
-                <>
+                <div className="app-shell-body">
+                  <p className="practice-empty">Nog geen werkwoorden in je lijst.</p>
+                </div>
+              )
+            return (
+              <>
+                <div className="app-shell-body">
                   <ul className="verb-pick-list">
                     {verbs.map((w) => (
                       <li key={w.key}>
@@ -1123,48 +1234,51 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
-                  <div className="practice-summary-actions">
-                    <button
-                      className="btn help"
-                      disabled={pickerSelected.size === 0}
-                      onClick={() => startVerbFocus([...pickerSelected], 'menu')}
-                      title="Start rammen"
-                    >
-                      <span className="material-icons">gavel</span> {pickerSelected.size}
-                    </button>
+                </div>
+                <div className="app-shell-foot">
+                  <div className="action-bar">
+                    <div className="action-bar-left" />
+                    <div className="action-bar-right">
+                      <button
+                        className="btn help"
+                        disabled={pickerSelected.size === 0}
+                        onClick={() => startVerbFocus([...pickerSelected], 'menu')}
+                        title="Start rammen"
+                      >
+                        <span className="material-icons">gavel</span> {pickerSelected.size}
+                      </button>
+                    </div>
                   </div>
-                </>
-              )
-            })()}
-          </div>
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 
       {screen === 'verbFocus' && (
-        <div className="screen" aria-label="Werkwoord rammen">
-          <div className="screen-inner">
-            <VerbFocusPanel
-              vocab={vocab}
-              verbKeys={focusKeys}
-              variant={spanishVariant}
-              onBack={() => setScreen(focusReturn)}
-            />
-          </div>
+        <div className="app-shell" aria-label="Werkwoord rammen">
+          <VerbFocusPanel
+            vocab={vocab}
+            verbKeys={focusKeys}
+            variant={spanishVariant}
+            onBack={() => setScreen(focusReturn)}
+          />
         </div>
       )}
 
       {screen === 'chat' && (
-        <div className="screen" aria-label="Chat">
-          <div className="screen-inner">
-            <ChatPanel
-              title={chatTitle}
-              seed={chatSeed}
-              context={chatContext ?? undefined}
-              onBack={() => setScreen(chatReturnTo)}
-            />
-          </div>
+        <div className="app-shell" aria-label="Chat">
+          <ChatPanel
+            title={chatTitle}
+            seed={chatSeed}
+            context={chatContext ?? undefined}
+            onBack={() => setScreen(chatReturnTo)}
+          />
         </div>
       )}
+
+      <div className="reader-body">
 
       {settingsOpen && (
         <div className="panel">
@@ -1372,13 +1486,29 @@ export default function App() {
             <span className="material-icons">headphones</span> Luister naar de zin
           </p>
         ) : (
-          <p className="spanish" lang="es" onMouseUp={handleSelection}>
+          <p
+            className="spanish"
+            lang="es"
+            onMouseUp={handleSelection}
+            onPointerDown={onSentencePointerDown}
+            onPointerMove={onSentencePointerMove}
+            onPointerUp={onSentencePointerUp}
+          >
             {tokenize(sentence).map((t, i) =>
               t.isWord ? (
                 <span
-                  className={`word${markedKeys.has(t.key) ? ' marked' : ''}`}
+                  className={`word${markedKeys.has(t.key) ? ' marked' : ''}${
+                    touchSel && i >= touchSel[0] && i <= touchSel[1] ? ' selrange' : ''
+                  }`}
                   key={i}
-                  onClick={() => toggleMark(t.key, t.raw)}
+                  data-widx={i}
+                  onClick={() => {
+                    if (suppressClickRef.current) {
+                      suppressClickRef.current = false
+                      return
+                    }
+                    toggleMark(t.key, t.raw)
+                  }}
                 >
                   {t.raw}
                   <span className="tooltip">
@@ -1391,6 +1521,31 @@ export default function App() {
               ),
             )}
           </p>
+        )}
+
+        {tapWord && (
+          <div className="word-popover">
+            <span className="word-popover-gloss">
+              <strong lang="es">{tapWord.raw}</strong> — {glosses ? glosses[tapWord.key] ?? '—' : '…'}
+            </span>
+            <div className="word-popover-actions">
+              <button
+                className="btn"
+                onClick={() => {
+                  toggleMark(tapWord.key, tapWord.raw)
+                  setTapWord(null)
+                }}
+              >
+                <span className="material-icons">
+                  {markedKeys.has(tapWord.key) ? 'check' : 'bookmark_add'}
+                </span>{' '}
+                {markedKeys.has(tapWord.key) ? 'Uit lijst' : 'Markeer'}
+              </button>
+              <button className="btn" onClick={() => setTapWord(null)}>
+                Sluiten
+              </button>
+            </div>
+          </div>
         )}
 
         {reveal === 'dutch' && (
@@ -1492,7 +1647,9 @@ export default function App() {
         {error && <p className="warn">{error}</p>}
         {reader.error && <p className="warn">AI-knipper: {reader.error}</p>}
       </main>
+      </div>
 
+      <div className="reader-foot">
       <div className="controls">
         {!audioMuted && (
           <button className="btn help" onClick={handleListen} disabled={!ttsSupported()}>
@@ -1540,6 +1697,7 @@ export default function App() {
       <footer className="foot">
         browser-stem · vertaling via Google Translate · uitleg via Gemini · PDF via pdfjs
       </footer>
+      </div>
     </div>
   )
 }

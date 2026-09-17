@@ -12,7 +12,7 @@ const SEGMENT_MODE_KEY = 'spaanleren.segmentMode.v1'
 const VERB_SETTINGS_KEY = 'spaanleren.verbSettings.v1'
 const SPANISH_VARIANT_KEY = 'spaanleren.spanishVariant.v1'
 
-interface Progress {
+export interface Progress {
   /** Index van de huidige zin (deterministische modus). */
   index: number
   /** Cursor voor de AI-modus: welke chunk + welke eenheid daarin. */

@@ -300,58 +300,63 @@ export default function VerbFocusPanel({ vocab, verbKeys, variant, onBack }: Pro
   // ---- Voorbereiden --------------------------------------------------------
   if (preparing) {
     return (
-      <div className="practice">
-        <div className="practice-head">
+      <>
+        <div className="app-shell-head practice-head">
           {backButton}
           {title}
         </div>
-        <div className="practice-card">
-          <div className="practice-card-face">
-            <span className="practice-loading">
-              <span className="spinner" aria-hidden="true" /> Voorbereiden…
-            </span>
+        <div className="app-shell-body">
+          <div className="practice-card">
+            <div className="practice-card-face">
+              <span className="practice-loading">
+                <span className="spinner" aria-hidden="true" /> Voorbereiden…
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
   // ---- Voorbereiden mislukt ------------------------------------------------
   if (prepError) {
     return (
-      <div className="practice">
-        <div className="practice-head">
+      <>
+        <div className="app-shell-head practice-head">
           {backButton}
           {title}
         </div>
-        <div className="practice-summary">
-          <p className="practice-summary-line practice-wrong">
-            <span className="material-icons">warning</span> Voorbereiden mislukt.
-          </p>
-          <p className="practice-summary-sub">{prepError}</p>
+        <div className="app-shell-body">
+          <div className="practice-summary">
+            <p className="practice-summary-line practice-wrong">
+              <span className="material-icons">warning</span> Voorbereiden mislukt.
+            </p>
+            <p className="practice-summary-sub">{prepError}</p>
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
   // ---- Klaar ---------------------------------------------------------------
   if (finished) {
     return (
-      <div className="practice">
-        <div className="practice-head">
+      <>
+        <div className="app-shell-head practice-head">
           {backButton}
           <span className="practice-title">Klaar</span>
         </div>
-        <div className="practice-summary">
-          <p className="practice-summary-line practice-right">
-            <span className="material-icons">celebration</span> Gerammd!
-          </p>
-          <p className="practice-summary-sub">
-            {total} {total === 1 ? 'vorm' : 'vormen'} afgewerkt.
-          </p>
-          <div className="practice-summary-actions">{backButton}</div>
+        <div className="app-shell-body">
+          <div className="practice-summary">
+            <p className="practice-summary-line practice-right">
+              <span className="material-icons">celebration</span> Gerammd!
+            </p>
+            <p className="practice-summary-sub">
+              {total} {total === 1 ? 'vorm' : 'vormen'} afgewerkt.
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
@@ -372,8 +377,8 @@ export default function VerbFocusPanel({ vocab, verbKeys, variant, onBack }: Pro
   ) : null
 
   return (
-    <div className="practice">
-      <div className="practice-head">
+    <>
+      <div className="app-shell-head practice-head">
         {backButton}
         {title}
         <span className="practice-progress">
@@ -381,30 +386,30 @@ export default function VerbFocusPanel({ vocab, verbKeys, variant, onBack }: Pro
         </span>
       </div>
 
-      <div className="practice-card">
-        <div className="practice-card-face">
-          {current && (
-            <span className="practice-front">
-              {verbLabel}
-              {' — '}
-              <strong>{current.person}</strong>
-            </span>
-          )}
+      <div className="app-shell-body">
+        <div className="practice-card">
+          <div className="practice-card-face">
+            {current && (
+              <span className="practice-front">
+                {verbLabel}
+                {' — '}
+                <strong>{current.person}</strong>
+              </span>
+            )}
+          </div>
         </div>
-      </div>
 
-      {showTable && currentTable && (
-        <div className="practice-summary">
-          {currentTable.forms.map((f) => (
-            <p className="practice-summary-sub" lang="es" key={f.person}>
-              <strong>{f.person}</strong> — {f.form}
-            </p>
-          ))}
-        </div>
-      )}
+        {showTable && currentTable && (
+          <div className="practice-summary">
+            {currentTable.forms.map((f) => (
+              <p className="practice-summary-sub" lang="es" key={f.person}>
+                <strong>{f.person}</strong> — {f.form}
+              </p>
+            ))}
+          </div>
+        )}
 
-      {current && !checked && (
-        <>
+        {current && !checked && (
           <input
             ref={inputRef}
             className="vocab-add-input"
@@ -419,44 +424,55 @@ export default function VerbFocusPanel({ vocab, verbKeys, variant, onBack }: Pro
               }
             }}
           />
-          <button
-            className="sound-toggle"
-            type="button"
-            onClick={checkAnswer}
-            aria-label="Nakijken"
-            title="Nakijken (Enter)"
-          >
-            <span className="material-icons" aria-hidden="true">
-              done
-            </span>
-          </button>
-        </>
-      )}
+        )}
 
-      {current && checked && (
-        <div className="practice-summary">
-          <p className={`practice-summary-line ${lastCorrect ? 'practice-right' : 'practice-wrong'}`}>
-            <span className="material-icons">{lastCorrect ? 'check_circle' : 'cancel'}</span>
-          </p>
-          <p className="practice-summary-sub" lang="es">
-            <strong>{current.answer}</strong> <SpeakButton text={current.answer} />
-          </p>
-          <div className="practice-summary-actions">
-            <button
-              ref={nextBtnRef}
-              className="sound-toggle"
-              type="button"
-              onClick={handleNext}
-              aria-label="Volgende"
-              title="Volgende (Enter)"
-            >
-              <span className="material-icons" aria-hidden="true">
-                arrow_forward
-              </span>
-            </button>
+        {current && checked && (
+          <div className="practice-summary">
+            <p className={`practice-summary-line ${lastCorrect ? 'practice-right' : 'practice-wrong'}`}>
+              <span className="material-icons">{lastCorrect ? 'check_circle' : 'cancel'}</span>
+            </p>
+            <p className="practice-summary-sub" lang="es">
+              <strong>{current.answer}</strong> <SpeakButton text={current.answer} />
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="app-shell-foot">
+        <div className="action-bar">
+          <div className="action-bar-left" />
+          <div className="action-bar-right">
+            {current && !checked && (
+              <button
+                className="sound-toggle"
+                type="button"
+                onClick={checkAnswer}
+                aria-label="Nakijken"
+                title="Nakijken (Enter)"
+              >
+                <span className="material-icons" aria-hidden="true">
+                  done
+                </span>
+              </button>
+            )}
+
+            {current && checked && (
+              <button
+                ref={nextBtnRef}
+                className="sound-toggle"
+                type="button"
+                onClick={handleNext}
+                aria-label="Volgende"
+                title="Volgende (Enter)"
+              >
+                <span className="material-icons" aria-hidden="true">
+                  arrow_forward
+                </span>
+              </button>
+            )}
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    </>
   )
 }
